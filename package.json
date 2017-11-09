@@ -1,0 +1,26 @@
+{
+  "name": "react-native-queue",
+  "version": "1.0.0-alpha.0",
+  "description": "A React Native Job Queue",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/billmalarky/react-native-queue.git"
+  },
+  "keywords": [
+    "react",
+    "react-native",
+    "queue",
+    "job-queue",
+    "task-queue"
+  ],
+  "author": "Reid Mayo",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/billmalarky/react-native-queue/issues"
+  },
+  "homepage": "https://github.com/billmalarky/react-native-queue#readme"
+}
