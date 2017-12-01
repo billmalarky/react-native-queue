@@ -69,7 +69,7 @@ export class Queue {
 
     // If queue is already running, don't fire up concurrent loop.
     if (this.status == 'active') {
-      return;
+      return false;
     }
 
     this.status = 'active';

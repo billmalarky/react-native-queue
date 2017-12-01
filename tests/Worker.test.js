@@ -54,6 +54,20 @@ describe('Models/Worker', function() {
 
   });
 
+  it('#getConcurrency() should throw error if no worker assigned to passed in job name.', async () => {
+
+    const worker = new Worker();
+    const jobName = 'no-worker-exists';
+
+    try {
+      worker.getConcurrency(jobName);
+      throw new Error('getConcurrency() should have thrown an error due to no worker assigned to that job name.');
+    } catch (error) {
+      error.should.deepEqual(new Error('Job ' + jobName + ' does not have a worker assigned to it.'));
+    }
+
+  });
+
   it('#getConcurrency() should return worker job concurrency', async () => {
 
     const worker = new Worker();

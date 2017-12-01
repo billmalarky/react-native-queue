@@ -37,6 +37,22 @@ describe('Models/Queue', function() {
 
   });
 
+  it('init() Calling init() multiple times will only set queue.realm once.', async () => {
+
+    const queue = await QueueFactory();
+
+    queue.realm.constructor.name.should.equal('Realm');
+
+    // Overwrite realm instance to test it doesn't get set to the actual
+    // Realm singleton instance again in init() since queue.realm is no longer null.
+    queue.realm = 'arbitrary-string';
+
+    queue.init();
+
+    queue.realm.should.equal('arbitrary-string');
+
+  });
+
   it('#addWorker() and removeWorker() should pass calls through to Worker class', async () => {
 
     const queue = await QueueFactory();
@@ -104,8 +120,8 @@ describe('Models/Queue', function() {
 
     queue.addWorker(jobName, () => {});
 
-    queue.createJob(jobName, payload, jobOptions, false);
-    queue.status.should.equal('inactive');
+    queue.createJob(jobName, payload, jobOptions, true);
+    queue.status.should.equal('active');
 
     queue.stop();
 
@@ -130,7 +146,7 @@ describe('Models/Queue', function() {
     queue.createJob(jobName, payload, jobOptions, false);
     queue.createJob(jobName, payload, jobOptions, false);
 
-    // startQueue is false so queue should have started.
+    // startQueue is false so queue should not have started.
     queue.status.should.equal('inactive');
 
     queue.start();
@@ -156,6 +172,42 @@ describe('Models/Queue', function() {
 
   });
 
+  it('#start() called when queue is already active should NOT fire up a concurrent queue.', async () => {
+
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+    const payload = { data: 'example-data' };
+    const jobOptions = { priority: 4, timeout: 3000, attempts: 3};
+
+    queue.addWorker(jobName, async () => {
+
+      // Make queue take some time to process.
+      await new Promise( resolve => {
+        setTimeout(resolve, 1000);
+      });
+
+    });
+
+    // Create a couple jobs
+    queue.createJob(jobName, payload, jobOptions, false);
+    queue.createJob(jobName, payload, jobOptions, false);
+
+    // startQueue is false so queue should not have started.
+    queue.status.should.equal('inactive');
+
+    // Start queue, don't await so this test can continue while queue processes.
+    queue.start();
+
+    queue.status.should.equal('active');
+
+    // Calling queue.start() on already running queue should cause start() to return
+    // early with false bool indicating concurrent start did not occur.
+    const falseStart = await queue.start(); //Must be awaited to resolve async func promise into false value.
+
+    falseStart.should.be.False();
+
+  });
+
   it('#getJobs() should grab all jobs in queue.', async () => {
 
     const queue = await QueueFactory();
@@ -174,6 +226,10 @@ describe('Models/Queue', function() {
     const jobs = await queue.getJobs(true);
 
     jobs.length.should.equal(4);
+
+    const mvccJobs = await queue.getJobs(); // Test non-blocking read version as well.
+
+    mvccJobs.length.should.equal(4);
 
   });
 
@@ -618,6 +674,22 @@ describe('Models/Queue', function() {
     // All jobs should be deleted.
     const remainingJobs = await queue.getJobs(true);
     remainingJobs.length.should.equal(0);
+
+  });
+
+  it('#flushQueue(name) does not bother with delete query if no jobs exist already.', async () => {
+
+    const queue = await QueueFactory();
+
+    // Mock queue.realm.delete() so we can test that it has not been called.
+    let hasDeleteBeenCalled = false;
+    queue.realm.delete = () => {
+      hasDeleteBeenCalled = true; // Switch flag if function gets called.
+    };
+
+    queue.flushQueue('no-jobs-exist-for-this-job-name');
+
+    hasDeleteBeenCalled.should.be.False();
 
   });
 
