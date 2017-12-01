@@ -1,6 +1,6 @@
 
 // Define globals for eslint.
-/* global describe it require */
+/* global describe it */
 
 // Load dependencies
 import should from 'should'; // eslint-disable-line no-unused-vars
@@ -13,12 +13,12 @@ describe('Models/Worker', function() {
 
     const worker = new Worker();
 
-    worker.addWorker('test-job-one', async (id, payload) => {});
+    worker.addWorker('test-job-one', async () => {});
 
     const workerOptions = {
       concurrency: 3
     };
-    worker.addWorker('test-job-two', async (id, payload) => {}, workerOptions);
+    worker.addWorker('test-job-two', async () => {}, workerOptions);
 
     // first worker is added with default options.
     Worker.workers['test-job-one'].should.be.a.Function();
@@ -37,14 +37,14 @@ describe('Models/Worker', function() {
     const worker = new Worker();
 
     // Add workers.
-    worker.addWorker('test-job-one', async (id, payload) => {});
+    worker.addWorker('test-job-one', async () => {});
 
     const workerOptions = {
       concurrency: 3
     };
-    worker.addWorker('test-job-two', async (id, payload) => {}, workerOptions);
+    worker.addWorker('test-job-two', async () => {}, workerOptions);
 
-    worker.addWorker('test-job-three', async (id, payload) => {});
+    worker.addWorker('test-job-three', async () => {});
 
     Object.keys(Worker.workers).should.deepEqual(['test-job-one', 'test-job-two', 'test-job-three']);
 
@@ -62,7 +62,7 @@ describe('Models/Worker', function() {
     const workerOptions = {
       concurrency: 36
     };
-    worker.addWorker('test-job-one', async (id, payload) => {}, workerOptions);
+    worker.addWorker('test-job-one', async () => {}, workerOptions);
 
     worker.getConcurrency('test-job-one').should.equal(36);
 
@@ -105,7 +105,7 @@ describe('Models/Worker', function() {
 
     const worker = new Worker();
 
-    worker.addWorker('test-job-one', async (id, payload) => {
+    worker.addWorker('test-job-one', async () => {
       return new Promise((resolve) => {
         setTimeout(() => {
           resolve(true);
@@ -117,7 +117,7 @@ describe('Models/Worker', function() {
       await worker.executeJob(job);
       throw new Error('execute job should have thrown an error due to timeout.');
     } catch (error) {
-      error.should.deepEqual(new Error('TIMEOUT: Job id: ' + job.id + ' timed out in ' + jobTimeout  + 'ms.'))
+      error.should.deepEqual(new Error('TIMEOUT: Job id: ' + job.id + ' timed out in ' + jobTimeout  + 'ms.'));
     }
 
   });
@@ -144,7 +144,7 @@ describe('Models/Worker', function() {
 
     const worker = new Worker();
 
-    worker.addWorker('test-job-one', async (id, payload) => {
+    worker.addWorker('test-job-one', async () => {
 
       // Job increments counter.
       counter++;

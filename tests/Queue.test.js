@@ -1,6 +1,6 @@
 
 // Define globals for eslint.
-/* global describe it require */
+/* global describe it beforeEach */
 
 // Load dependencies
 import should from 'should'; // eslint-disable-line no-unused-vars
@@ -61,7 +61,7 @@ describe('Models/Queue', function() {
 
     try {
       await queue.createJob();
-      throw new Error('Job with no name should have thrown error.')
+      throw new Error('Job with no name should have thrown error.');
     } catch (error) {
       error.should.deepEqual(new Error('Job name must be supplied.'));
     }
@@ -181,7 +181,6 @@ describe('Models/Queue', function() {
 
     const queue = await QueueFactory();
     const jobName = 'job-name';
-    const payload = { data: 'example-data' };
     const jobOptions = { priority: 4, timeout: 3000, attempts: 3};
 
     queue.addWorker(jobName, () => {}, {
@@ -214,7 +213,6 @@ describe('Models/Queue', function() {
 
     const queue = await QueueFactory();
     const jobName = 'job-name';
-    const payload = { data: 'example-data' };
     const jobOptions = { priority: 4, timeout: 3000, attempts: 3};
 
     queue.addWorker(jobName, () => {}, {
@@ -248,7 +246,6 @@ describe('Models/Queue', function() {
 
     const queue = await QueueFactory();
     const jobName = 'job-name';
-    const payload = { data: 'example-data' };
     const jobOptions = { priority: 0, timeout: 3000, attempts: 3};
 
     queue.addWorker(jobName, () => {}, {
@@ -287,7 +284,6 @@ describe('Models/Queue', function() {
 
     const queue = await QueueFactory();
     const jobName = 'job-name';
-    const payload = { data: 'example-data' };
     const jobOptions = { priority: 0, timeout: 3000, attempts: 3};
 
     queue.addWorker(jobName, () => {}, {
@@ -490,7 +486,7 @@ describe('Models/Queue', function() {
     jobs.length.should.equal(6);
     let failedJob = jobs.find((job) => {
       const payload = JSON.parse(job.payload);
-      return (payload.dummy && payload.dummy == '2 data')
+      return (payload.dummy && payload.dummy == '2 data');
     });
     let failedJobData = JSON.parse(failedJob.data);
     failedJobData.failedAttempts.should.equal(1);
@@ -513,7 +509,7 @@ describe('Models/Queue', function() {
     secondJobs.length.should.equal(5);
     failedJob = secondJobs.find((job) => {
       const payload = JSON.parse(job.payload);
-      return (payload.dummy && payload.dummy == '2 data')
+      return (payload.dummy && payload.dummy == '2 data');
     });
     failedJobData = JSON.parse(failedJob.data);
     failedJobData.failedAttempts.should.equal(2);
@@ -534,7 +530,7 @@ describe('Models/Queue', function() {
     thirdJobs.length.should.equal(5); // Failed job still exists, it is just marked as failure.
     failedJob = thirdJobs.find((job) => {
       const payload = JSON.parse(job.payload);
-      return (payload.dummy && payload.dummy == '2 data')
+      return (payload.dummy && payload.dummy == '2 data');
     });
     failedJobData = JSON.parse(failedJob.data);
     failedJobData.failedAttempts.should.equal(3);
