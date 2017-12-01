@@ -22,5 +22,16 @@
   "bugs": {
     "url": "https://github.com/billmalarky/react-native-queue/issues"
   },
-  "homepage": "https://github.com/billmalarky/react-native-queue#readme"
+  "homepage": "https://github.com/billmalarky/react-native-queue#readme",
+  "dependencies": {
+    "promise-reflect": "^1.1.0",
+    "react-native-uuid": "^1.4.9",
+    "realm": "^2.0.12"
+  },
+  "devDependencies": {
+    "babel-jest": "^21.2.0",
+    "babel-preset-react-native": "^4.0.0",
+    "jest": "^21.2.1",
+    "should": "^13.1.3"
+  }
 }
