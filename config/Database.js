@@ -10,11 +10,11 @@ const JobSchema = {
   primaryKey: 'id',
   properties: {
     id:  'string', // UUID.
-    name: 'string', // Job name to be matched with handler function.
+    name: 'string', // Job name to be matched with worker function.
     payload: 'string', // Job payload stored as JSON.
     data: 'string', // Store arbitrary data like "failed attempts" as JSON.
     priority: 'int', // -5 to 5 to indicate low to high priority.
-    active: { type: 'bool', default: false},
+    active: { type: 'bool', default: false}, // Whether or not job is currently being processed.
     created: 'date', // Job creation timestamp.
     failed: 'date?' // Job failure timestamp (null until failure).
   }
