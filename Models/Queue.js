@@ -207,13 +207,13 @@ export class Queue {
    * worker function that has concurrency X > 1, then X related (jobs with same name)
    * jobs will be returned.
    *
-   * If queue is running with a lifespan, only jobs with timeouts at least 500ms < than lifespan
+   * If queue is running with a lifespan, only jobs with timeouts at least 500ms < than REMAINING lifespan
    * AND a set timeout (ie timeout > 0) will be returned. See Queue.start() for more info.
    *
-   * @param queueLifespan {number} - The lifespan of the current queue process (defaults to indefinite lifespan).
+   * @param queueLifespanRemaining {number} - The remaining lifespan of the current queue process (defaults to indefinite).
    * @return {promise} - Promise resolves to an array of job(s) to be processed next by the queue.
    */
-  async getConcurrentJobs(queueLifespan = 0) {
+  async getConcurrentJobs(queueLifespanRemaining = 0) {
 
     let concurrentJobs = [];
 
@@ -224,9 +224,9 @@ export class Queue {
 
       // Build query string
       // If queueLife
-      const timeoutUpperBound = (queueLifespan - 500 > 0) ? queueLifespan - 499 : 0; // Only get jobs with timeout at least 500ms < queueLifespan.
+      const timeoutUpperBound = (queueLifespanRemaining - 500 > 0) ? queueLifespanRemaining - 499 : 0; // Only get jobs with timeout at least 500ms < queueLifespanRemaining.
 
-      const initialQuery = (queueLifespan)
+      const initialQuery = (queueLifespanRemaining)
         ? 'active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
         : 'active == FALSE AND failed == null';
 
@@ -243,7 +243,7 @@ export class Queue {
 
         const concurrency = this.worker.getConcurrency(nextJob.name);
 
-        const allRelatedJobsQuery = (queueLifespan)
+        const allRelatedJobsQuery = (queueLifespanRemaining)
           ? 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
           : 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null';
 

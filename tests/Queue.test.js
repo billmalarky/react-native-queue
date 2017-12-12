@@ -286,7 +286,7 @@ describe('Models/Queue', function() {
 
   });
 
-  it('#getConcurrentJobs(queueLifespan) should work as expected for queues started with a lifespan.', async () => {
+  it('#getConcurrentJobs(queueLifespanRemaining) should work as expected for queues started with a lifespan.', async () => {
 
     const queue = await QueueFactory();
     const jobName = 'job-name';
@@ -295,7 +295,7 @@ describe('Models/Queue', function() {
       concurrency: 3
     });
 
-    // Test that jobs with no timeout set will not be returned by getConcurrentJobs() if queueLifespan is passed.
+    // Test that jobs with no timeout set will not be returned by getConcurrentJobs() if queueLifespanRemaining is passed.
     queue.createJob(jobName, {}, {
       timeout: 0
     }, false);
@@ -314,7 +314,7 @@ describe('Models/Queue', function() {
     // Reset DB
     queue.flushQueue();
 
-    // Test that jobs with timeout not at least 500ms less than queueLifespan are not grabbed.
+    // Test that jobs with timeout not at least 500ms less than queueLifespanRemaining are not grabbed.
     queue.createJob(jobName, {}, {
       timeout: 500
     }, false);
