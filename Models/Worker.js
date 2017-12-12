@@ -90,15 +90,13 @@ export default class Worker {
     }
 
     // Timeout Logic
-    const jobTimeout = JSON.parse(job.data).timeout;
-
-    if (jobTimeout > 0) {
+    if (job.timeout > 0) {
 
       let timeoutPromise = new Promise((resolve, reject) => {
 
         setTimeout(() => {
-          reject(new Error('TIMEOUT: Job id: ' + job.id + ' timed out in ' + jobTimeout  + 'ms.'));
-        }, jobTimeout);
+          reject(new Error('TIMEOUT: Job id: ' + job.id + ' timed out in ' + job.timeout  + 'ms.'));
+        }, job.timeout);
 
       });
 

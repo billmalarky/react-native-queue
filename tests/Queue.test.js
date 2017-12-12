@@ -84,6 +84,31 @@ describe('Models/Queue', function() {
 
   });
 
+  it('#createJob() should apply defaults correctly', async () => {
+
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+
+    queue.addWorker(jobName, () => {});
+
+    queue.createJob(jobName, {}, {}, false);
+
+    // startQueue is false so queue should not have started.
+    queue.status.should.equal('inactive');
+
+    const jobs = await queue.getJobs(true);
+
+    // Check job has default values.
+    jobs[0].should.have.properties({
+      name: jobName,
+      payload: JSON.stringify({}),
+      data: JSON.stringify({attempts: 1}),
+      priority: 0,
+      active: false,
+      timeout: 25000
+    });
+
+  });
 
   it('#createJob() should create a new job on the queue', async () => {
 
@@ -104,9 +129,10 @@ describe('Models/Queue', function() {
     jobs[0].should.have.properties({
       name: jobName,
       payload: JSON.stringify(payload),
-      data: JSON.stringify({timeout: jobOptions.timeout, attempts: jobOptions.attempts}),
+      data: JSON.stringify({attempts: jobOptions.attempts}),
       priority: jobOptions.priority,
-      active: false
+      active: false,
+      timeout: jobOptions.timeout
     });
 
   });

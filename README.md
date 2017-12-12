@@ -145,9 +145,16 @@ queue.createJob('job-name-here', {foo: 'bar'}, {
   
   // Timeout in ms before job is considered failed.
   // Use this setting to kill off hanging jobs that are clogging up
-  // your queue.
+  // your queue, or ensure your jobs finish in a timely manner if you want
+  // to execute jobs in OS background tasks.
+  //
+  // IMPORTANT: Jobs are required to have a timeout > 0 set in order to be processed 
+  // by a queue that has been started with a lifespan. As such, if you want to process
+  // jobs in an OS background task, you MUST give the jobs a timeout setting.
+  //
   // Setting this option to 0 means never timeout.
-  // Defaults to 0.
+  //
+  // Defaults to 25000
   timeout: 30000, // Timeout in 30 seconds
   
   // Number of times to attempt a failing job before marking job as failed and moving on.

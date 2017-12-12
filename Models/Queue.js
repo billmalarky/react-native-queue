@@ -94,11 +94,11 @@ export class Queue {
         name,
         payload: JSON.stringify(payload),
         data: JSON.stringify({
-          timeout: (options.timeout > 0) ? options.timeout : 0,
           attempts: options.attempts || 1
         }),
         priority: options.priority || 0,
         active: false,
+        timeout: (options.timeout > 0) ? options.timeout : 25000,
         created: new Date(),
         failed: null
       });

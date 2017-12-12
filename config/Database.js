@@ -15,6 +15,7 @@ const JobSchema = {
     data: 'string', // Store arbitrary data like "failed attempts" as JSON.
     priority: 'int', // -5 to 5 to indicate low to high priority.
     active: { type: 'bool', default: false}, // Whether or not job is currently being processed.
+    timeout: 'int', // Job timeout in ms. 0 means no timeout.
     created: 'date', // Job creation timestamp.
     failed: 'date?' // Job failure timestamp (null until failure).
   }

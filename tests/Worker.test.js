@@ -108,11 +108,11 @@ describe('Models/Worker', function() {
         key: 'value'
       }),
       data: JSON.stringify({
-        timeout: jobTimeout,
         attempts: 1
       }),
       priority: 0,
       active: false,
+      timeout: jobTimeout,
       created: new Date(),
       failed: null
     };
