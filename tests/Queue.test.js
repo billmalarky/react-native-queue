@@ -750,6 +750,62 @@ describe('Models/Queue', function() {
 
   });
 
+  it('#processJob() logs errors on job failure', async () => {
+
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+    const jobOptions = { priority: 0, timeout: 5000, attempts: 3};
+
+    let counter = 0; // Incrementing this will be our job "work"
+
+    queue.addWorker(jobName, () => {
+
+      counter++;
+
+      throw new Error('Example Error number: ' + counter);
+
+    }, {});
+
+    queue.createJob(jobName, {}, jobOptions, false);
+
+    const jobs = await queue.getConcurrentJobs();
+
+    await queue.processJob(jobs[0]);
+
+    const logCheckOneJob = await queue.getJobs(true);
+
+    logCheckOneJob[0].data.should.equal(JSON.stringify({
+      attempts: 3,
+      failedAttempts: 1,
+      errors: ['Example Error number: 1']
+    }));
+
+    await queue.processJob(jobs[0]);
+
+    const logCheckTwoJob = await queue.getJobs(true);
+
+    logCheckTwoJob[0].data.should.equal(JSON.stringify({
+      attempts: 3,
+      failedAttempts: 2,
+      errors: ['Example Error number: 1', 'Example Error number: 2']
+    }));
+
+    await queue.processJob(jobs[0]);
+
+    const logCheckThreeJob = await queue.getJobs(true);
+
+    logCheckThreeJob[0].data.should.equal(JSON.stringify({
+      attempts: 3,
+      failedAttempts: 3,
+      errors: ['Example Error number: 1', 'Example Error number: 2', 'Example Error number: 3']
+    }));
+
+    const noAvailableJobCheck = await queue.getConcurrentJobs();
+
+    noAvailableJobCheck.length.should.equal(0);
+
+  });
+
   it('#flushQueue(name) should delete all jobs in the queue of type "name".', async () => {
 
     const queue = await QueueFactory();

@@ -285,8 +285,9 @@ export class Queue {
    *
    * Job is deleted upon successful completion.
    *
-   * If job fails execution via timeout or other exception, job will be
-   * re-attempted up to the specified "attempts" setting (defaults to 1),
+   * If job fails execution via timeout or other exception, error will be
+   * logged to job.data.errors array and job will be reset to inactive status.
+   * Job will be re-attempted up to the specified "attempts" setting (defaults to 1),
    * after which it will be marked as failed and not re-attempted further.
    *
    * @param job {object} - Job realm model object
@@ -316,6 +317,13 @@ export class Queue {
           jobData.failedAttempts = 1;
         } else {
           jobData.failedAttempts++;
+        }
+
+        // Log error
+        if (!jobData.errors) {
+          jobData.errors = [ error.message ];
+        } else {
+          jobData.errors.push(error.message);
         }
 
         job.data = JSON.stringify(jobData);
