@@ -84,6 +84,33 @@ describe('Models/Queue', function() {
 
   });
 
+  it('#createJob() should validate job options.', async () => {
+
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+
+    queue.addWorker(jobName, () => {});
+
+    try {
+      await queue.createJob(jobName, {}, {
+        timeout: -100
+      }, false);
+      throw new Error('createJob() should validate job timeout option.');
+    } catch (error) {
+      error.should.deepEqual(new Error('Invalid job option.'));
+    }
+
+    try {
+      await queue.createJob(jobName, {}, {
+        attempts: -100
+      }, false);
+      throw new Error('createJob() should validate job attempts option.');
+    } catch (error) {
+      error.should.deepEqual(new Error('Invalid job option.'));
+    }
+
+  });
+
   it('#createJob() should apply defaults correctly', async () => {
 
     const queue = await QueueFactory();
@@ -256,6 +283,103 @@ describe('Models/Queue', function() {
     const mvccJobs = await queue.getJobs(); // Test non-blocking read version as well.
 
     mvccJobs.length.should.equal(4);
+
+  });
+
+  it('#getConcurrentJobs(queueLifespan) should work as expected for queues started with a lifespan.', async () => {
+
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+
+    queue.addWorker(jobName, () => {}, {
+      concurrency: 3
+    });
+
+    // Test that jobs with no timeout set will not be returned by getConcurrentJobs() if queueLifespan is passed.
+    queue.createJob(jobName, {}, {
+      timeout: 0
+    }, false);
+    queue.createJob(jobName, {}, {
+      timeout: 0
+    }, false);
+    queue.createJob(jobName, {}, {
+      timeout: 0
+    }, false);
+
+    const jobs = await queue.getConcurrentJobs(2000);
+
+    // No jobs should be grabbed
+    jobs.length.should.equal(0);
+
+    // Reset DB
+    queue.flushQueue();
+
+    // Test that jobs with timeout not at least 500ms less than queueLifespan are not grabbed.
+    queue.createJob(jobName, {}, {
+      timeout: 500
+    }, false);
+    queue.createJob(jobName, {}, {
+      timeout: 500
+    }, false);
+    queue.createJob(jobName, {}, {
+      timeout: 500
+    }, false);
+
+    const notEnoughBufferJobs = await queue.getConcurrentJobs(600);
+
+    // No jobs should be grabbed
+    notEnoughBufferJobs.length.should.equal(0);
+
+    // Reset DB
+    queue.flushQueue();
+
+    //Lower bound edge case test
+    queue.createJob(jobName, {}, {
+      timeout: 0
+    }, false);
+    queue.createJob(jobName, {}, {
+      timeout: 1
+    }, false);
+    queue.createJob(jobName, {}, {
+      timeout: 1
+    }, false);
+
+    // startQueue is false so queue should not have started.
+    queue.status.should.equal('inactive');
+
+    const lowerBoundEdgeCaseJobs = await queue.getConcurrentJobs(501);
+
+    // Only the jobs with the timeouts set should be grabbed.
+    lowerBoundEdgeCaseJobs.length.should.equal(2);
+
+    // Reset DB
+    queue.flushQueue();
+
+    //Test concurrency is working as expected with lifespans.
+    queue.createJob(jobName, {}, {
+      timeout: 800
+    }, false);
+    queue.createJob(jobName, {}, {
+      timeout: 1000
+    }, false);
+    queue.createJob(jobName, {}, {
+      timeout: 1000
+    }, false);
+    queue.createJob(jobName, {}, {
+      timeout: 1000
+    }, false);
+
+    // startQueue is false so queue should not have started.
+    queue.status.should.equal('inactive');
+
+    const lifespanConcurrencyJobs = await queue.getConcurrentJobs(2000);
+
+    // Only 3 jobs should be grabbed in this test even though all jobs
+    // have valid timeouts because worker concurrency is set to 3
+    lifespanConcurrencyJobs.length.should.equal(3);
+
+    // Reset DB
+    queue.flushQueue();
 
   });
 

@@ -87,6 +87,11 @@ export class Queue {
       throw new Error('Job name must be supplied.');
     }
 
+    // Validate options
+    if (options.timeout < 0 || options.attempts < 0) {
+      throw new Error('Invalid job option.');
+    }
+
     this.realm.write(() => {
 
       this.realm.create('Job', {
@@ -202,9 +207,13 @@ export class Queue {
    * worker function that has concurrency X > 1, then X related (jobs with same name)
    * jobs will be returned.
    *
+   * If queue is running with a lifespan, only jobs with timeouts at least 500ms < than lifespan
+   * AND a set timeout (ie timeout > 0) will be returned. See Queue.start() for more info.
+   *
+   * @param queueLifespan {number} - The lifespan of the current queue process (defaults to indefinite lifespan).
    * @return {promise} - Promise resolves to an array of job(s) to be processed next by the queue.
    */
-  async getConcurrentJobs() {
+  async getConcurrentJobs(queueLifespan = 0) {
 
     let concurrentJobs = [];
 
@@ -213,8 +222,16 @@ export class Queue {
       // Get next job from queue.
       let nextJob = null;
 
+      // Build query string
+      // If queueLife
+      const timeoutUpperBound = (queueLifespan - 500 > 0) ? queueLifespan - 499 : 0; // Only get jobs with timeout at least 500ms < queueLifespan.
+
+      const initialQuery = (queueLifespan)
+        ? 'active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
+        : 'active == FALSE AND failed == null';
+
       let jobs = this.realm.objects('Job')
-        .filtered('active == FALSE AND failed == null')
+        .filtered(initialQuery)
         .sorted([['priority', true], ['created', false]]);
 
       if (jobs.length) {
@@ -226,8 +243,12 @@ export class Queue {
 
         const concurrency = this.worker.getConcurrency(nextJob.name);
 
+        const allRelatedJobsQuery = (queueLifespan)
+          ? 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
+          : 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null';
+
         const allRelatedJobs = this.realm.objects('Job')
-          .filtered('name == "'+ nextJob.name +'" AND active == FALSE AND failed == null')
+          .filtered(allRelatedJobsQuery)
           .sorted([['priority', true], ['created', false]]);
 
         let jobsToMarkActive = allRelatedJobs.slice(0, concurrency);
@@ -243,9 +264,9 @@ export class Queue {
         });
 
         // Reselect now-active concurrent jobs by id.
-        const query = concurrentJobIds.map( jobId => 'id == "' + jobId + '"').join(' OR ');
+        const reselectQuery = concurrentJobIds.map( jobId => 'id == "' + jobId + '"').join(' OR ');
         const reselectedJobs = this.realm.objects('Job')
-          .filtered(query)
+          .filtered(reselectQuery)
           .sorted([['priority', true], ['created', false]]);
 
         concurrentJobs = reselectedJobs.slice(0, concurrency);
