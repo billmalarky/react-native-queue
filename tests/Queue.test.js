@@ -806,6 +806,44 @@ describe('Models/Queue', function() {
 
   });
 
+  it('#processJob() handles a job timeout as expected', async () => {
+
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+    const jobOptions = { priority: 0, timeout: 500, attempts: 1};
+
+    queue.addWorker(jobName, async () => {
+
+      await new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(true);
+        }, 2000);
+      });
+
+    });
+
+    queue.createJob(jobName, {}, jobOptions, false);
+
+    const jobs = await queue.getConcurrentJobs();
+
+    const jobId = jobs[0].id;
+
+    await queue.processJob(jobs[0]);
+
+    const logCheckOneJob = await queue.getJobs(true);
+
+    logCheckOneJob[0].data.should.equal(JSON.stringify({
+      attempts: 1,
+      failedAttempts: 1,
+      errors: ['TIMEOUT: Job id: '+ jobId +' timed out in 500ms.']
+    }));
+
+    const noAvailableJobCheck = await queue.getConcurrentJobs();
+
+    noAvailableJobCheck.length.should.equal(0);
+
+  });
+
   it('#flushQueue(name) should delete all jobs in the queue of type "name".', async () => {
 
     const queue = await QueueFactory();
