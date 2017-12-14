@@ -207,7 +207,7 @@ describe('Models/Queue', function() {
     const anotherJobName = 'another-job-name';
     const timeoutJobName = 'timeout-job-name';
     const concurrentJobName = 'concurrent-job-name';
-    const queueLifespan = 5300;
+    const queueLifespan = 5385;
     let remainingLifespan = queueLifespan;
 
     // Track the jobs that have executed to test against.
