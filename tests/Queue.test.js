@@ -1,6 +1,6 @@
 
 // Define globals for eslint.
-/* global describe it beforeEach */
+/* global describe it beforeEach jest */
 
 // Load dependencies
 import should from 'should'; // eslint-disable-line no-unused-vars
@@ -504,6 +504,96 @@ describe('Models/Queue', function() {
     ]);
 
   }, 10000); // Increase timeout of this advanced test to 10 seconds.
+
+  it('#start(lifespan) "Zero lifespanRemaining" edge case #1 is properly handled.', async () => {
+
+    // Mock Date.now()
+    Date.now = jest.fn();
+    Date.now.mockReturnValueOnce(0);
+    Date.now.mockReturnValueOnce(1000);
+
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+    let counter = 0;
+
+    queue.addWorker(jobName, () => {
+      counter++;
+    });
+
+    // Create a job
+    queue.createJob(jobName, {}, {
+      timeout: 100 // Timeout must be set to test that job still isn't grabbed during "zero lifespanRemaining" edge case.
+    }, false);
+
+    // startQueue is false so queue should not have started.
+    queue.status.should.equal('inactive');
+
+    // Start queue, don't await so this test can continue while queue processes.
+    await queue.start(1000);
+
+    // Queue should be inactive again.
+    queue.status.should.equal('inactive');
+
+    // Since we hit "zero lifespanRemaining" edge case, the job should never have been pulled
+    // off the queue and processed. So counter should remain 0 and job should still exist.
+    counter.should.equal(0);
+
+    const jobs = await queue.getJobs(true);
+
+    jobs.length.should.equal(1);
+
+  });
+
+  it('#start(lifespan) "Zero lifespanRemaining" edge case #2 is properly handled.', async () => {
+
+    // Mock Date.now()
+    Date.now = jest.fn();
+    Date.now.mockReturnValueOnce(0);
+    Date.now.mockReturnValueOnce(500);
+    Date.now.mockReturnValueOnce(2000);
+
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+    let counter = 0;
+
+    queue.addWorker(jobName, () => {
+      counter++;
+    });
+
+    // Create jobs
+    queue.createJob(jobName, {}, {
+      timeout: 100 // Timeout must be set to test that job still isn't grabbed during "zero lifespanRemaining" edge case.
+    }, false);
+
+    await new Promise((resolve) => { setTimeout(resolve, 25); }); // Space out inserts so time sorting is deterministic.
+
+    queue.createJob(jobName, {
+      testIdentifier: 'this is 2nd job'
+    }, {
+      timeout: 100 // Timeout must be set to test that job still isn't grabbed during "zero lifespanRemaining" edge case.
+    }, false);
+
+    // startQueue is false so queue should not have started.
+    queue.status.should.equal('inactive');
+
+    // Start queue, don't await so this test can continue while queue processes.
+    await queue.start(2000);
+
+    // Queue should be inactive again.
+    queue.status.should.equal('inactive');
+
+    // Since we skipped first "zero lifespanRemaining" edge case, one job should
+    // be processed. However since we hit 2nd "zero lifespanRemaining" edge case,
+    // second job should never be pulled off queue and so second job should still exist.
+    counter.should.equal(1);
+
+    const jobs = await queue.getJobs(true);
+
+    const jobPayload = JSON.parse(jobs[0].payload);
+
+    jobPayload.testIdentifier.should.equal('this is 2nd job');
+
+  });
 
   //
   // FULL QUEUE UNIT TESTING
