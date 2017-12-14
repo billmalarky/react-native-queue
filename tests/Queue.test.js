@@ -199,7 +199,12 @@ describe('Models/Queue', function() {
 
   });
 
-  it('#start(lifespan) ADVANCED TEST (Multiple job names, job timeouts, concurrency, priority): queue will process jobs with timeout set as expected until lifespan ends.', async () => {
+  it('#start(lifespan) ADVANCED TEST FULL (Multiple job names, job timeouts, concurrency, priority) - ONLY RUN IN NON-CI ENV: queue will process jobs with timeout set as expected until lifespan ends.', async () => {
+
+    console.log(process.env.COVERALLS_ENV, 'process.env.COVERALLS_ENV');
+    if (process.env.COVERALLS_ENV == 'production') {
+      return true;
+    }
 
     const queue = await QueueFactory();
     queue.flushQueue();
@@ -207,7 +212,7 @@ describe('Models/Queue', function() {
     const anotherJobName = 'another-job-name';
     const timeoutJobName = 'timeout-job-name';
     const concurrentJobName = 'concurrent-job-name';
-    const queueLifespan = 5385;
+    const queueLifespan = 5300;
     let remainingLifespan = queueLifespan;
 
     // Track the jobs that have executed to test against.
@@ -504,6 +509,623 @@ describe('Models/Queue', function() {
     ]);
 
   }, 10000); // Increase timeout of this advanced test to 10 seconds.
+
+  it('#start(lifespan) ADVANCED TEST ONE (Multiple job names, job timeouts, Priority): queue will process jobs with timeout set as expected until lifespan ends.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    const anotherJobName = 'another-job-name';
+    const timeoutJobName = 'timeout-job-name';
+    const queueLifespan = 4200;
+    let remainingLifespan = queueLifespan;
+
+    // Track the jobs that have executed to test against.
+    let executedJobs = [];
+
+    // We need to be able to throw an error outside of
+    // job workers, because errors thrown inside a job
+    // worker function are caught and logged by job processing
+    // logic. They will not fail the test. So track bad jobs
+    // and throw error after jobs finish processing.
+    let badJobs = [];
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      // Track jobs that exec
+      executedJobs.push(payload.trackingName);
+
+      // Detect jobs that should't be picked up by lifespan queue.
+      if (remainingLifespan - 500 < payload.payloadOptionsTimeout) {
+        badJobs.push({id, payload});
+      }
+
+      remainingLifespan = remainingLifespan - payload.payloadTimeout;
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, payload.payloadTimeout);
+      });
+
+    }, { concurrency: 1});
+
+    queue.addWorker(anotherJobName, async (id, payload) => {
+
+      // Track jobs that exec
+      executedJobs.push(payload.trackingName);
+
+      // Detect jobs that should't be picked up by lifespan queue.
+      if (remainingLifespan - 500 < payload.payloadOptionsTimeout) {
+        badJobs.push({id, payload});
+      }
+
+      remainingLifespan = remainingLifespan - payload.payloadTimeout;
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, payload.payloadTimeout);
+      });
+
+    }, { concurrency: 1});
+
+    queue.addWorker(timeoutJobName, async (id, payload) => {
+
+      // Track jobs that exec
+      executedJobs.push(payload.trackingName);
+
+      // Detect jobs that should't be picked up by lifespan queue.
+      if (remainingLifespan - 500 < payload.payloadOptionsTimeout) {
+        badJobs.push({id, payload});
+      }
+
+      remainingLifespan = remainingLifespan - payload.payloadOptionsTimeout;
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, payload.payloadTimeout);
+      });
+
+    }, { concurrency: 1});
+
+    // Create a couple jobs
+    queue.createJob(jobName, {
+      trackingName: 'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)',
+      payloadTimeout: 100,
+      payloadOptionsTimeout: 200 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 200,
+      priority: -1
+    }, false);
+
+    // Since more than one job can be written in 1 ms, we need to add a slight delay
+    // in order to control the order jobs come off the queue (since they are time sorted)
+    // If multiple jobs are written in the same ms, Realm can't be deterministic about job
+    // ordering when we pop jobs off the top of the queue.
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(anotherJobName, {
+      trackingName: 'job2-another-job-name-payloadTimeout(1000)-timeout(1100)-priority(0)',
+      payloadTimeout: 1000,
+      payloadOptionsTimeout: 1100 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 1100
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(anotherJobName, {
+      trackingName: 'job3-another-job-name-payloadTimeout(750)-timeout(800)-priority(10)',
+      payloadTimeout: 750,
+      payloadOptionsTimeout: 800 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 800,
+      priority: 10
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(jobName, {
+      trackingName: 'job4-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)',
+      payloadTimeout: 10000,
+      payloadOptionsTimeout: 10100 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 10100
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    // queue.createJob(jobName, {
+    //   trackingName: 'job5-job-name-payloadTimeout(400)-timeout(500)-priority(0)',
+    //   payloadTimeout: 400,
+    //   payloadOptionsTimeout: 500 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 500
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(timeoutJobName, {
+      trackingName: 'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)',
+      payloadTimeout: 10000,
+      payloadOptionsTimeout: 500 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 500
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(jobName, {
+      trackingName: 'job7-job-name-payloadTimeout(1000)-timeout(1100)-priority(1)',
+      payloadTimeout: 1000,
+      payloadOptionsTimeout: 1100 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 1100,
+      priority: 1
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+
+    // // Create concurrent jobs
+    // queue.createJob(concurrentJobName, {
+    //   trackingName: 'job8-concurrent-job-name-payloadTimeout(500)-timeout(600)-priority(0)',
+    //   payloadTimeout: 500,
+    //   payloadOptionsTimeout: 600 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 600,
+    //   priority: 0
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+    //
+    // queue.createJob(concurrentJobName, {
+    //   trackingName: 'job9-concurrent-job-name-payloadTimeout(510)-timeout(600)-priority(0)',
+    //   payloadTimeout: 510,
+    //   payloadOptionsTimeout: 600 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 600,
+    //   priority: 0
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+    //
+    // queue.createJob(concurrentJobName, {
+    //   trackingName: 'job10-concurrent-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)', // THIS JOB WILL BE SKIPPED BY getConcurrentJobs() due to timeout too long.
+    //   payloadTimeout: 10000,
+    //   payloadOptionsTimeout: 10100 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 10100,
+    //   priority: 0
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+    //
+    // queue.createJob(concurrentJobName, {
+    //   trackingName: 'job11-concurrent-job-name-payloadTimeout(600)-timeout(700)-priority(0)',
+    //   payloadTimeout: 600,
+    //   payloadOptionsTimeout: 700 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 700,
+    //   priority: 0
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    // queue.createJob(jobName, {
+    //   trackingName: 'job12-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+    //   payloadTimeout: 100,
+    //   payloadOptionsTimeout: 200 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 200
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(jobName, {
+      trackingName: 'job13-job-name-payloadTimeout(400)-timeout(500)-priority(0)', // THIS JOB WON'T BE RUN BECAUSE THE TIMEOUT IS 500 AND ONLY 950ms left by this pount. 950 - 500 = 450 and 500 remaining is min for job to be pulled.
+      payloadTimeout: 400,
+      payloadOptionsTimeout: 500 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 500
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(jobName, {
+      trackingName: 'job14-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+      payloadTimeout: 100,
+      payloadOptionsTimeout: 200 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 200
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(jobName, {
+      trackingName: 'job15-job-name-payloadTimeout(500)-timeout(600)-priority(0)', // THIS JOB WON'T BE RUN BECAUSE out of time!
+      payloadTimeout: 500,
+      payloadOptionsTimeout: 600 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 600
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    // startQueue is false so queue should not have started.
+    queue.status.should.equal('inactive');
+
+    const queueStartTime = Date.now();
+
+    // Start queue, don't await so this test can continue while queue processes.
+    await queue.start(queueLifespan);
+
+    const queueEndTime = Date.now();
+    const queueProcessTime = queueStartTime - queueEndTime;
+
+    if (queueProcessTime > queueLifespan) {
+      throw new Error('ERROR: Queue did not complete before lifespan ended.');
+    }
+
+    if (badJobs.length) {
+      throw new Error('ERROR: Queue with lifespan picked up bad jobs it did not have enough remaining lifespan to execute: ' + JSON.stringify(badJobs));
+    }
+
+    // Queue should have stopped.
+    queue.status.should.equal('inactive');
+
+    //Check that the correct jobs executed.
+    executedJobs.should.deepEqual([
+      'job3-another-job-name-payloadTimeout(750)-timeout(800)-priority(10)',
+      'job7-job-name-payloadTimeout(1000)-timeout(1100)-priority(1)',
+      'job2-another-job-name-payloadTimeout(1000)-timeout(1100)-priority(0)',
+      'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)', // This job executes but isn't deleted because it fails due to timeout.
+      'job14-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+      'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)'
+
+      // 'job3-another-job-name-payloadTimeout(750)-timeout(800)-priority(10)',
+      // 'job7-job-name-payloadTimeout(1000)-timeout(1100)-priority(1)',
+      // 'job2-another-job-name-payloadTimeout(1000)-timeout(1100)-priority(0)',
+      // 'job5-job-name-payloadTimeout(400)-timeout(500)-priority(0)',
+      // 'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)', // This job executes but isn't deleted because it fails due to timeout.
+      // 'job8-concurrent-job-name-payloadTimeout(500)-timeout(600)-priority(0)',
+      // 'job9-concurrent-job-name-payloadTimeout(510)-timeout(600)-priority(0)',
+      // 'job11-concurrent-job-name-payloadTimeout(600)-timeout(700)-priority(0)',
+      // 'job12-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+      // 'job14-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+      // 'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)'
+    ]);
+
+    // Check jobs that couldn't be picked up are still in the queue.
+    const remainingJobs = await queue.getJobs(true);
+
+    const remainingJobNames = remainingJobs.map( job => {
+      const payload = JSON.parse(job.payload);
+      return payload.trackingName;
+    });
+
+    // queue.getJobs() doesn't order jobs in any particular way so just
+    // check that the jobs still exist on the queue.
+    remainingJobNames.should.containDeep([
+      'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)',
+      'job13-job-name-payloadTimeout(400)-timeout(500)-priority(0)',
+      'job15-job-name-payloadTimeout(500)-timeout(600)-priority(0)',
+      'job4-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)'
+
+      // 'job4-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)',
+      // 'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)',
+      // 'job10-concurrent-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)',
+      // 'job13-job-name-payloadTimeout(400)-timeout(500)-priority(0)',
+      // 'job15-job-name-payloadTimeout(500)-timeout(600)-priority(0)'
+    ]);
+
+  });
+
+  it('#start(lifespan) ADVANCED TEST TWO (Multiple job names, CONCURRENCY, Priority): queue will process jobs with timeout set as expected until lifespan ends.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    const anotherJobName = 'another-job-name';
+    //const timeoutJobName = 'timeout-job-name';
+    const concurrentJobName = 'concurrent-job-name';
+    const queueLifespan = 3800;
+    let remainingLifespan = queueLifespan;
+
+    // Track the jobs that have executed to test against.
+    let executedJobs = [];
+
+    // We need to be able to throw an error outside of
+    // job workers, because errors thrown inside a job
+    // worker function are caught and logged by job processing
+    // logic. They will not fail the test. So track bad jobs
+    // and throw error after jobs finish processing.
+    let badJobs = [];
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      // Track jobs that exec
+      executedJobs.push(payload.trackingName);
+
+      // Detect jobs that should't be picked up by lifespan queue.
+      if (remainingLifespan - 500 < payload.payloadOptionsTimeout) {
+        badJobs.push({id, payload});
+      }
+
+      remainingLifespan = remainingLifespan - payload.payloadTimeout;
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, payload.payloadTimeout);
+      });
+
+    }, { concurrency: 1});
+
+    queue.addWorker(anotherJobName, async (id, payload) => {
+
+      // Track jobs that exec
+      executedJobs.push(payload.trackingName);
+
+      // Detect jobs that should't be picked up by lifespan queue.
+      if (remainingLifespan - 500 < payload.payloadOptionsTimeout) {
+        badJobs.push({id, payload});
+      }
+
+      remainingLifespan = remainingLifespan - payload.payloadTimeout;
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, payload.payloadTimeout);
+      });
+
+    }, { concurrency: 1});
+
+    // queue.addWorker(timeoutJobName, async (id, payload) => {
+    //
+    //   // Track jobs that exec
+    //   executedJobs.push(payload.trackingName);
+    //
+    //   // Detect jobs that should't be picked up by lifespan queue.
+    //   if (remainingLifespan - 500 < payload.payloadOptionsTimeout) {
+    //     badJobs.push({id, payload});
+    //   }
+    //
+    //   remainingLifespan = remainingLifespan - payload.payloadOptionsTimeout;
+    //
+    //   await new Promise((resolve) => {
+    //     setTimeout(resolve, payload.payloadTimeout);
+    //   });
+    //
+    // }, { concurrency: 1});
+
+    queue.addWorker(concurrentJobName, async (id, payload) => {
+
+      // Track jobs that exec
+      executedJobs.push(payload.trackingName);
+
+      // Detect jobs that should't be picked up by lifespan queue.
+      if (remainingLifespan - 500 < payload.payloadOptionsTimeout) {
+        badJobs.push({id, payload});
+      }
+
+
+      // Since these all run concurrently, only subtract the job with the longest
+      // timeout that will presumabely finish last.
+      if (payload.payloadTimeout == 600) {
+        remainingLifespan = remainingLifespan - payload.payloadTimeout;
+      }
+
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, payload.payloadTimeout);
+      });
+
+    }, { concurrency: 4});
+
+    // Create a couple jobs
+    queue.createJob(jobName, {
+      trackingName: 'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)',
+      payloadTimeout: 100,
+      payloadOptionsTimeout: 200 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 200,
+      priority: -1
+    }, false);
+
+    // Since more than one job can be written in 1 ms, we need to add a slight delay
+    // in order to control the order jobs come off the queue (since they are time sorted)
+    // If multiple jobs are written in the same ms, Realm can't be deterministic about job
+    // ordering when we pop jobs off the top of the queue.
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(anotherJobName, {
+      trackingName: 'job2-another-job-name-payloadTimeout(1000)-timeout(1100)-priority(0)',
+      payloadTimeout: 1000,
+      payloadOptionsTimeout: 1100 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 1100
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(anotherJobName, {
+      trackingName: 'job3-another-job-name-payloadTimeout(750)-timeout(800)-priority(10)',
+      payloadTimeout: 750,
+      payloadOptionsTimeout: 800 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 800,
+      priority: 10
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(jobName, {
+      trackingName: 'job4-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)',
+      payloadTimeout: 10000,
+      payloadOptionsTimeout: 10100 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 10100
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    // queue.createJob(jobName, {
+    //   trackingName: 'job5-job-name-payloadTimeout(400)-timeout(500)-priority(0)',
+    //   payloadTimeout: 400,
+    //   payloadOptionsTimeout: 500 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 500
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    // queue.createJob(timeoutJobName, {
+    //   trackingName: 'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)',
+    //   payloadTimeout: 10000,
+    //   payloadOptionsTimeout: 500 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 500
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    // queue.createJob(jobName, {
+    //   trackingName: 'job7-job-name-payloadTimeout(1000)-timeout(1100)-priority(1)',
+    //   payloadTimeout: 1000,
+    //   payloadOptionsTimeout: 1100 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 1100,
+    //   priority: 1
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+
+    // // Create concurrent jobs
+    queue.createJob(concurrentJobName, {
+      trackingName: 'job8-concurrent-job-name-payloadTimeout(500)-timeout(600)-priority(0)',
+      payloadTimeout: 500,
+      payloadOptionsTimeout: 600 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 600,
+      priority: 0
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(concurrentJobName, {
+      trackingName: 'job9-concurrent-job-name-payloadTimeout(550)-timeout(600)-priority(0)',
+      payloadTimeout: 550,
+      payloadOptionsTimeout: 600 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 600,
+      priority: 0
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(concurrentJobName, {
+      trackingName: 'job10-concurrent-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)', // THIS JOB WILL BE SKIPPED BY getConcurrentJobs() due to timeout too long.
+      payloadTimeout: 10000,
+      payloadOptionsTimeout: 10100 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 10100,
+      priority: 0
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(concurrentJobName, {
+      trackingName: 'job11-concurrent-job-name-payloadTimeout(600)-timeout(700)-priority(0)',
+      payloadTimeout: 600,
+      payloadOptionsTimeout: 700 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 700,
+      priority: 0
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    // queue.createJob(jobName, {
+    //   trackingName: 'job12-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+    //   payloadTimeout: 100,
+    //   payloadOptionsTimeout: 200 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 200
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    // queue.createJob(jobName, {
+    //   trackingName: 'job13-job-name-payloadTimeout(400)-timeout(500)-priority(0)', // THIS JOB WON'T BE RUN BECAUSE THE TIMEOUT IS 500 AND ONLY 950ms left by this pount. 950 - 500 = 450 and 500 remaining is min for job to be pulled.
+    //   payloadTimeout: 400,
+    //   payloadOptionsTimeout: 500 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 500
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+    //
+    // queue.createJob(jobName, {
+    //   trackingName: 'job14-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+    //   payloadTimeout: 100,
+    //   payloadOptionsTimeout: 200 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 200
+    // }, false);
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    queue.createJob(jobName, {
+      trackingName: 'job15-job-name-payloadTimeout(3000)-timeout(3100)-priority(0)', // THIS JOB WON'T BE RUN BECAUSE out of time!
+      payloadTimeout: 3000,
+      payloadOptionsTimeout: 3100 // Mirror the actual job options timeout in payload so we can use it for testing.
+    }, {
+      timeout: 3100
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
+    // startQueue is false so queue should not have started.
+    queue.status.should.equal('inactive');
+
+    const queueStartTime = Date.now();
+
+    // Start queue, don't await so this test can continue while queue processes.
+    await queue.start(queueLifespan);
+
+    const queueEndTime = Date.now();
+    const queueProcessTime = queueStartTime - queueEndTime;
+
+    if (queueProcessTime > queueLifespan) {
+      throw new Error('ERROR: Queue did not complete before lifespan ended.');
+    }
+
+    if (badJobs.length) {
+      throw new Error('ERROR: Queue with lifespan picked up bad jobs it did not have enough remaining lifespan to execute: ' + JSON.stringify(badJobs));
+    }
+
+    // Queue should have stopped.
+    queue.status.should.equal('inactive');
+
+    //Check that the correct jobs executed.
+    executedJobs.should.deepEqual([
+      'job3-another-job-name-payloadTimeout(750)-timeout(800)-priority(10)',
+      'job2-another-job-name-payloadTimeout(1000)-timeout(1100)-priority(0)',
+      'job8-concurrent-job-name-payloadTimeout(500)-timeout(600)-priority(0)',
+      'job9-concurrent-job-name-payloadTimeout(550)-timeout(600)-priority(0)',
+      'job11-concurrent-job-name-payloadTimeout(600)-timeout(700)-priority(0)',
+      'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)'
+
+      // 'job3-another-job-name-payloadTimeout(750)-timeout(800)-priority(10)',
+      // 'job7-job-name-payloadTimeout(1000)-timeout(1100)-priority(1)',
+      // 'job2-another-job-name-payloadTimeout(1000)-timeout(1100)-priority(0)',
+      // 'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)', // This job executes but isn't deleted because it fails due to timeout.
+      // 'job14-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+      // 'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)'
+
+      // 'job3-another-job-name-payloadTimeout(750)-timeout(800)-priority(10)',
+      // 'job7-job-name-payloadTimeout(1000)-timeout(1100)-priority(1)',
+      // 'job2-another-job-name-payloadTimeout(1000)-timeout(1100)-priority(0)',
+      // 'job5-job-name-payloadTimeout(400)-timeout(500)-priority(0)',
+      // 'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)', // This job executes but isn't deleted because it fails due to timeout.
+      // 'job8-concurrent-job-name-payloadTimeout(500)-timeout(600)-priority(0)',
+      // 'job9-concurrent-job-name-payloadTimeout(550)-timeout(600)-priority(0)',
+      // 'job11-concurrent-job-name-payloadTimeout(600)-timeout(700)-priority(0)',
+      // 'job12-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+      // 'job14-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
+      // 'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)'
+    ]);
+
+    // Check jobs that couldn't be picked up are still in the queue.
+    const remainingJobs = await queue.getJobs(true);
+
+    const remainingJobNames = remainingJobs.map( job => {
+      const payload = JSON.parse(job.payload);
+      return payload.trackingName;
+    });
+
+    // queue.getJobs() doesn't order jobs in any particular way so just
+    // check that the jobs still exist on the queue.
+    remainingJobNames.should.containDeep([
+      'job4-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)',
+      'job10-concurrent-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)',
+      'job15-job-name-payloadTimeout(3000)-timeout(3100)-priority(0)'
+
+      // 'job4-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)',
+      // 'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)',
+      // 'job10-concurrent-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)',
+      // 'job13-job-name-payloadTimeout(400)-timeout(500)-priority(0)',
+      // 'job15-job-name-payloadTimeout(500)-timeout(600)-priority(0)'
+    ]);
+
+  });
 
   it('#start(lifespan) "Zero lifespanRemaining" edge case #1 is properly handled.', async () => {
 
