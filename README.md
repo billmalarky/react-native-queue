@@ -7,17 +7,17 @@
 [![JSDoc](https://img.shields.io/badge/jsdoc-100%25%20code%20documentation-green.svg)](http://usejsdoc.org/)
 [![Coverage Status](https://coveralls.io/repos/github/billmalarky/react-native-queue/badge.svg?branch=master)](https://coveralls.io/github/billmalarky/react-native-queue?branch=master)
 
-A React Native job queue / task queue backed by persistent Realm storage. Jobs will persist until completed, even if user closes and re-opens app. React Native Queue is easily integrated into React Native background processes so you can ensure the queue will continue to process until all jobs are completed.
+A React Native at-least-once priority job queue / task queue backed by persistent Realm storage. Jobs will persist until completed, even if user closes and re-opens app. React Native Queue is easily integrated into OS background processes so you can ensure the queue will continue to process until all jobs are completed even if app isn't in focus.
 
-##Features
+## Features
 
 * **Simple API:** Set up job workers and begin creating your jobs in minutes with just two basic API calls
   * queue.addWorker(name, workerFunction, options = {})  
   * queue.createJob(name, payload = {}, options = {}, startQueue = true) 
-* **Powerful options:** Easily modify default functionality. Set job timeouts, number of retry attempts, priority, and worker concurrency with an options object.
+* **Powerful options:** Easily modify default functionality. Set job timeouts, number of retry attempts, priority, and worker concurrency with an options object. Start queue processing with a lifespan to easily meet OS background task time limits.
 * **Persistent Jobs:** Jobs are persisted with Realm. Because jobs persist, you can easily continue to process jobs across app restarts or in OS background tasks until completed or failed (or app is uninstalled).
 
-##Installation
+## Installation
 
 ```bash
 $ npm install --save react-native-queue
@@ -39,16 +39,16 @@ Linking realm **should only be done once**, reinstalling node_modules with npm o
 
 To troubleshoot linking, refer to [the realm installation instructions](https://realm.io/docs/javascript/latest/#getting-started).
 
-##Basic Usage
+## Basic Usage
 
 React Native Queue is a standard job/task queue built specifically for react native applications. If you have a long-running task, or a large number of tasks, consider turning that task into a job(s) and throwing it/them onto the queue to be processed in the background instead of blocking your UI until task(s) complete.
 
 Creating and processing jobs consists of:
  
-1. Importing React Native Queue
+1. Importing and initializing React Native Queue
 2. Registering worker functions (the functions that execute your jobs).
 3. Creating jobs.
-4. Starting the queue (note this happens automatically on job creation, but sometimes the queue must be explicitly started such as in a OS background task or on app restart).
+4. Starting the queue (note this happens automatically on job creation, but sometimes the queue must be explicitly started such as in a OS background task or on app restart). Queue can be started with a lifespan in order to limit queue processing time.
 
 ```js
 
@@ -108,11 +108,11 @@ queue.createJob('example-job', {
   }
 });
 
-console.log('The above jobs are processing in the background now.');
+console.log('The above jobs are processing in the background of app now.');
 
 ```
 
-##Options
+## Options
 
 **Worker Options**
 
@@ -352,5 +352,162 @@ const styles = StyleSheet.create({
   },
 });
 
+
+```
+
+**OS Background Task Full Example**
+
+For the purpose of this example we will use the [React Native Background Task](https://github.com/jamesisaac/react-native-background-task) module, but you could integrate React Native Queue with any acceptable OS background task module.
+
+Follow the [installation steps](https://github.com/jamesisaac/react-native-background-task#installation) for React Native Background Task.
+
+```js
+
+import React, { Component } from 'react';
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  Button,
+  AsyncStorage
+} from 'react-native';
+
+import BackgroundTask from 'react-native-background-task'
+import queueFactory from 'react-native-queue';
+
+BackgroundTask.define(async () => {
+
+  // Init queue
+  queue = await queueFactory();
+
+  // Register worker
+  queue.addWorker('background-example', async (id, payload) => {
+
+    const personId = (payload.name == 'luke') ? 1 : 2;
+
+    // Let's make a request for some data in the background and store it to AsyncStorage.
+    // This data would be available from AsyncStorage the next time your user fires up the app!
+    const response = await fetch('https://swapi.co/api/people/' + personId + '/');
+    const text = await response.text();
+
+    if (payload.name == 'luke') {
+      await AsyncStorage.setItem('lukeData', text);
+    } else {
+      await AsyncStorage.setItem('c3poData', text);
+    }
+
+  });
+
+  // Start the queue with a lifespan
+  // IMPORTANT: OS background tasks are limited to 30 seconds or less.
+  // NOTE: Queue lifespan logic will attempt to stop queue processing 500ms less than passed lifespan for a healthy shutdown buffer.
+  // IMPORTANT: Queue processing started with a lifespan will ONLY process jobs that have a defined timeout set.
+  // Additionally, lifespan processing will only process next job if job.timeout < (remainingLifespan - 500).
+  await queue.start(20000); // Run queue for at most 20 seconds.
+
+  // finish() must be called before OS hits timeout.
+  BackgroundTask.finish();
+
+});
+
+export default class App extends Component<{}> {
+
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      queue: null,
+      data: null
+    };
+
+    this.init();
+
+  }
+
+  async init() {
+
+    const queue = await queueFactory();
+
+    // Add the worker.
+    queue.addWorker('background-example', async (id, payload) => {
+      // Worker has to be defined before related jobs can be added to queue.
+      // Since this example is only concerned with OS background task worker execution,
+      // We will make this a dummy function in this context.
+      console.log(id);
+    });
+
+    // Attach initialized queue to state.
+    this.setState({
+      queue
+    });
+
+  }
+
+  componentDidMount() {
+    BackgroundTask.schedule(); // Schedule the task to run every ~15 min if app is closed.
+  }
+
+  makeJob(jobName, payload = {}) {
+    console.log('job is created but will not execute until the above OS background task runs in ~15 min');
+    this.state.queue.createJob(jobName, payload, {
+
+      timeout: 5000 // IMPORTANT: If queue processing is started with a lifespan ie queue.start(lifespan) it will ONLY process jobs with a defined timeout.
+
+    }, false); // Pass false so queue doesn't get started here (we want the queue to start only in OS background task in this example).
+  }
+
+  async checkData() {
+
+    const lukeData = await AsyncStorage.getItem('lukeData');
+    const c3poData = await AsyncStorage.getItem('c3poData');
+
+    this.setState({
+      data: {
+        lukeData: (lukeData) ? lukeData : 'No data loaded from OS background task yet for Luke Skywalker.',
+        c3poData: (c3poData) ? c3poData : 'No data loaded from OS background task yet for C-3PO.'
+      }
+    });
+
+  }
+
+  render() {
+
+    let output = 'No data loaded from OS background task yet.';
+    if (this.state.data) {
+      output = JSON.stringify(this.state.data);
+    }
+
+    return (
+      <View style={styles.container}>
+        <Text style={styles.welcome}>
+          Welcome to React Native!
+        </Text>
+        <Text>Click buttons below to add OS background task jobs.</Text>
+        <Text>Then Close App (task will not fire if app is in focus).</Text>
+        <Text>Job will exec in ~15 min in OS background.</Text>
+        {this.state.queue && <Button title={"Press To Queue Luke Skywalker Job"} onPress={ () => { this.makeJob('background-example', { name: 'luke' }) } } /> }
+        {this.state.queue && <Button title={"Press To Queue C-3PO Job"} onPress={ () => { this.makeJob('background-example', { name: 'c3po' }) } } /> }
+        <Button title={"Check if Data was loaded in OS background"} onPress={ () => { this.checkData() } } />
+        <Text>{output}</Text>
+      </View>
+    );
+
+  }
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5FCFF',
+  },
+  welcome: {
+    fontSize: 20,
+    textAlign: 'center',
+    margin: 10,
+  },
+});
 
 ```
