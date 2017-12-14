@@ -1,3 +1,5 @@
+<img src="/docs/logo.png" alt="React Native Queue"/>
+
 # React Native Queue
 #### Simple. Powerful. Persistent.
 
