@@ -128,9 +128,19 @@ export class Queue {
    * queue.start() will return early with a false boolean value instead
    * of running multiple queue processing loops concurrently.
    *
+   * Lifespan can be passed to start() in order to run the queue for a specific amount of time before stopping.
+   * This is useful, as an example, for OS background tasks which typically are time limited.
+   *
+   * NOTE: If lifespan is set, only jobs with a timeout property at least 500ms less than remaining lifespan will be processed
+   * during queue processing lifespan. This is to buffer for the small amount of time required to query Realm for suitable
+   * jobs, and to mark such jobs as complete or failed when job finishes processing.
+   *
+   * IMPORTANT: Jobs with timeout set to 0 that run indefinitely will not be processed if the queue is running with a lifespan.
+   *
+   * @param lifespan {number} - If lifespan is passed, the queue will start up and run for lifespan ms, then queue will be stopped.
    * @return {boolean|undefined} - False if queue is already started. Otherwise nothing is returned when queue finishes processing.
    */
-  async start() {
+  async start(lifespan = 0) {
 
     // If queue is already running, don't fire up concurrent loop.
     if (this.status == 'active') {
@@ -139,7 +149,18 @@ export class Queue {
 
     this.status = 'active';
 
-    let concurrentJobs = await this.getConcurrentJobs();
+    // Get jobs to process
+    const startTime = Date.now();
+    let lifespanRemaining = null;
+    let concurrentJobs = [];
+
+    if (lifespan !== 0) {
+      lifespanRemaining = lifespan - (Date.now() - startTime);
+      lifespanRemaining = (lifespanRemaining === 0) ? -1 : lifespanRemaining; // Handle exactly zero lifespan remaining edge case.
+      concurrentJobs = await this.getConcurrentJobs(lifespanRemaining);
+    } else {
+      concurrentJobs = await this.getConcurrentJobs();
+    }
 
     while (this.status == 'active' && concurrentJobs.length) {
 
@@ -153,7 +174,13 @@ export class Queue {
       await Promise.all(processingJobs.map(promiseReflect));
 
       // Get next batch of jobs.
-      concurrentJobs = await this.getConcurrentJobs();
+      if (lifespan !== 0) {
+        lifespanRemaining = lifespan - (Date.now() - startTime);
+        lifespanRemaining = (lifespanRemaining === 0) ? -1 : lifespanRemaining; // Handle exactly zero lifespan remaining edge case.
+        concurrentJobs = await this.getConcurrentJobs(lifespanRemaining);
+      } else {
+        concurrentJobs = await this.getConcurrentJobs();
+      }
 
     }
 
