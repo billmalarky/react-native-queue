@@ -386,17 +386,11 @@ BackgroundTask.define(async () => {
   // Register worker
   queue.addWorker('background-example', async (id, payload) => {
 
-    const personId = (payload.name == 'luke') ? 1 : 2;
-
-    // Let's make a request for some data in the background and store it to AsyncStorage.
-    // This data would be available from AsyncStorage the next time your user fires up the app!
-    const response = await fetch('https://swapi.co/api/people/' + personId + '/');
-    const text = await response.text();
-
+    // Load some arbitrary data while the app is in the background
     if (payload.name == 'luke') {
-      await AsyncStorage.setItem('lukeData', text);
+      await AsyncStorage.setItem('lukeData', 'Luke Skywalker arbitrary data loaded!');
     } else {
-      await AsyncStorage.setItem('c3poData', text);
+      await AsyncStorage.setItem('c3poData', 'C-3PO arbitrary data loaded!');
     }
 
   });
