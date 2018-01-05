@@ -156,10 +156,11 @@ queue.createJob('job-name-here', {foo: 'bar'}, {
   //
   // Setting this option to 0 means never timeout.
   //
-  // Defaults to 25000
+  // Defaults to 25000.
   timeout: 30000, // Timeout in 30 seconds
   
   // Number of times to attempt a failing job before marking job as failed and moving on.
+  // Defaults to 1.
   attempts: 4, // If this job fails to process 4 times in a row, it will be marked as failed.
   
 }); 
