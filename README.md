@@ -9,7 +9,20 @@
 [![JSDoc](https://img.shields.io/badge/jsdoc-100%25%20code%20documentation-green.svg)](http://usejsdoc.org/)
 [![Coverage Status](https://coveralls.io/repos/github/billmalarky/react-native-queue/badge.svg?branch=master)](https://coveralls.io/github/billmalarky/react-native-queue?branch=master)
 
-A React Native at-least-once priority job queue / task queue backed by persistent Realm storage. Jobs will persist until completed, even if user closes and re-opens app. React Native Queue is easily integrated into OS background processes so you can ensure the queue will continue to process until all jobs are completed even if app isn't in focus.
+A React Native at-least-once priority job queue / task queue backed by persistent Realm storage. Jobs will persist until completed, even if user closes and re-opens app. React Native Queue is easily integrated into OS background processes (services) so you can ensure the queue will continue to process until all jobs are completed even if app isn't in focus. It also plays well with Workers so your jobs can be thrown on the queue, then processed in dedicated worker threads for greatly improved processing performance.
+
+## Table of Contents
+
+* [Features](#features)
+* [Example Use Cases](#example-use-cases)
+* [Installation](#installation)
+* [Basic Usage](#basic-usage)
+* [Options](#options)
+* [Testing with Jest](#testing-with-jest)
+* [Caveats](#caveats)
+* [Advanced Usage Examples](#advanced-usage-examples)
+  * [Advanced Job Full Example](#advanced-job-full-example)
+  * [OS Background Task Full Example](#os-background-task-full-example)
 
 ## Features
 
@@ -18,6 +31,25 @@ A React Native at-least-once priority job queue / task queue backed by persisten
   * queue.createJob(name, payload = {}, options = {}, startQueue = true) 
 * **Powerful options:** Easily modify default functionality. Set job timeouts, number of retry attempts, priority, and worker concurrency with an options object. Start queue processing with a lifespan to easily meet OS background task time limits.
 * **Persistent Jobs:** Jobs are persisted with Realm. Because jobs persist, you can easily continue to process jobs across app restarts or in OS background tasks until completed or failed (or app is uninstalled).
+* **Powerful Integrations:** React Native Queue was designed to play well with others. The queue quickly integrates with a variety of OS background task and Worker packages so  processing your jobs in a background service or dedicated thread have never been easier.
+
+## Example Use Cases
+
+**React Native Queue is designed to be a swiss army knife for task management in React Native**. It abstracts away the many annoyances related to processing complex tasks, like durability, retry-on-failure, timeouts, chaining processes, and more. **Just throw your jobs onto the queue and relax - they're covered**.
+
+Need advanced task functionality like dedicated worker threads or OS services? Easy:
+
+* **React Native Queue + React Native Background Task:** [Simple and Powerful OS services](#os-background-task-full-example) that fire when your app is closed.
+* **React Native Queue + React Native Workers:** Spinning up [dedicated worker threads](https://gist.github.com/billmalarky/1d1f72a267a1608606410602aa63cabf) for CPU intensive tasks has never been easier.
+
+**Example Queue Tasks:**
+
+* Downloading content for offline access.
+* Media processing.
+* Cache Warming.
+* _Durable_ API calls to external services, such as publishing content to a variety of 3rd party distribution channel APIs.
+* Complex and time-consuming jobs that you want consistently processed regardless if app is open, closed, or repeatedly opened and closed.
+* Complex tasks with multiple linked dependant steps (job chaining).
 
 ## Installation
 
@@ -116,7 +148,7 @@ console.log('The above jobs are processing in the background of app now.');
 
 ## Options
 
-**Worker Options**
+#### Worker Options
 
 queue.addWorker() accepts an options object in order to tweak standard functionality.
 
@@ -132,7 +164,7 @@ queue.addWorker('job-name-here', (id, payload) => { console.log(id); }, {
 
 ```
 
-**Job Options**
+#### Job Options
 
 queue.createJob() accepts an options object in order to tweak standard functionality.
 
@@ -182,7 +214,7 @@ Because realm will write database files to the root test directory when running 
 
 ## Advanced Usage Examples
 
-**Advanced Job Full Example**
+#### Advanced Job Full Example
 
 ```js
 
@@ -358,7 +390,7 @@ const styles = StyleSheet.create({
 
 ```
 
-**OS Background Task Full Example**
+#### OS Background Task Full Example
 
 For the purpose of this example we will use the [React Native Background Task](https://github.com/jamesisaac/react-native-background-task) module, but you could integrate React Native Queue with any acceptable OS background task module.
 
