@@ -89,21 +89,27 @@ export default class Worker {
       throw new Error('Job ' + job.name + ' does not have a worker assigned to it.');
     }
 
-    // Timeout Logic
-    if (job.timeout > 0) {
+    // Data must be cloned off the realm job object for the timeout logic promise race.
+    // More info: https://github.com/billmalarky/react-native-queue/issues/2#issuecomment-361418965
+    const jobId = job.id;
+    const jobName = job.name;
+    const jobTimeout = job.timeout;
+    const jobPayload = JSON.parse(job.payload);
+
+    if (jobTimeout > 0) {
 
       let timeoutPromise = new Promise((resolve, reject) => {
 
         setTimeout(() => {
-          reject(new Error('TIMEOUT: Job id: ' + job.id + ' timed out in ' + job.timeout  + 'ms.'));
-        }, job.timeout);
+          reject(new Error('TIMEOUT: Job id: ' + jobId + ' timed out in ' + jobTimeout  + 'ms.'));
+        }, jobTimeout);
 
       });
 
-      await Promise.race([timeoutPromise, Worker.workers[job.name](job.id, JSON.parse(job.payload))]);
+      await Promise.race([timeoutPromise, Worker.workers[jobName](jobId, jobPayload)]);
 
     } else {
-      await Worker.workers[job.name](job.id, JSON.parse(job.payload));
+      await Worker.workers[jobName](jobId, jobPayload);
     }
 
   }
