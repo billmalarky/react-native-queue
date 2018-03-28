@@ -23,6 +23,7 @@ A React Native at-least-once priority job queue / task queue backed by persisten
 * [Advanced Usage Examples](#advanced-usage-examples)
   * [Advanced Job Full Example](#advanced-job-full-example)
   * [OS Background Task Full Example](#os-background-task-full-example)
+* [Tutorials](#tutorials)
 
 ## Features
 
@@ -540,3 +541,13 @@ const styles = StyleSheet.create({
 });
 
 ```
+
+## Tutorials
+
+#### Easy OS Background Tasks in React Native
+
+An in-depth guide to setting up background tasks / services that run periodically when the app is closed.
+
+* [Hosted on Medium](https://hackernoon.com/easy-os-background-tasks-in-react-native-bc4476c48b8a)
+* [Raw Markdown](/docs/easy-os-background-tasks-in-react-native.md)
+
