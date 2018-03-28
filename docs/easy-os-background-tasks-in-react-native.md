@@ -1,6 +1,8 @@
 
 # Easy OS Background Tasks in React Native
 
+<img src="/docs/easy-os-background-tasks-in-react-native.png" alt="Easy OS Background Tasks in React Native Header Image"/>
+
 **Thanks to a couple of relatively new libraries, running tasks in a background thread, also known as a service, when your react native app is closed has never been easier.**
 
 Today I’ll walk you through setting up tasks that will run periodically even when your app is closed. If you already have React Native setup, and you’re staring at your IDE right now, it will only take you ~15 minutes to be fully up and running with this complete example.
