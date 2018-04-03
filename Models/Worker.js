@@ -34,8 +34,9 @@ export default class Worker {
    */
   addWorker(jobName, worker, options = {}) {
 
+    // Validate input.
     if (!jobName || !worker) {
-      throw new Error('Job name and associated function must be supplied.');
+      throw new Error('Job name and associated worker function must be supplied.');
     }
 
     // Attach options to worker
