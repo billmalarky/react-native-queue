@@ -53,6 +53,50 @@ describe('Models/Queue', function() {
 
   });
 
+  it('#start(lifespan) FUNDAMENTAL TEST (queue started with lifespan will process a job with job timeout set).', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+
+    // Track the jobs that have executed to test against.
+    let executedJobs = [];
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      // Track jobs that exec
+      executedJobs.push(payload.trackingName);
+
+    });
+
+    // Create a job but don't auto-start queue
+    queue.createJob(jobName, {
+      trackingName: jobName
+    }, {
+      timeout: 100
+    }, false);
+
+    // startQueue is false so queue should not have started.
+    queue.status.should.equal('inactive');
+
+    // Start queue with lifespan, don't await so this test can continue while queue processes.
+    queue.start(750);
+
+    queue.status.should.equal('active');
+
+    // wait a bit for queue to process job
+    await new Promise((resolve) => {
+      setTimeout(resolve, 750);
+    });
+
+    //Check that the correct jobs executed.
+    executedJobs.should.deepEqual(['job-name']);
+
+    // Queue should have stopped.
+    queue.status.should.equal('inactive');
+
+  });
+
   it('#start(lifespan) BASIC TEST (One job type, default job/worker options): queue will process jobs with timeout set as expected until lifespan ends.', async () => {
 
     // This test will intermittently fail in CI environments like travis-ci.
