@@ -8,6 +8,25 @@ import Worker from '../Models/Worker';
 
 describe('Models/Worker', function() {
 
+  it('#addWorker() should validate input', async () => {
+
+    const worker = new Worker();
+
+    try {
+      worker.addWorker(null, async () => {});
+      throw new Error('worker.addWorker() should throw error if no jobname supplied.');
+    } catch (error) {
+      error.should.deepEqual(new Error('Job name and associated worker function must be supplied.'));
+    }
+
+    try {
+      worker.addWorker('test-job-one', null);
+      throw new Error('worker.addWorker() should throw error if no worker function supplied.');
+    } catch (error) {
+      error.should.deepEqual(new Error('Job name and associated worker function must be supplied.'));
+    }
+
+  });
 
   it('#addWorker() should work as expected', async () => {
 
