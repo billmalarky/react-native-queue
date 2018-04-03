@@ -34,6 +34,10 @@ export default class Worker {
    */
   addWorker(jobName, worker, options = {}) {
 
+    if (!jobName || !worker) {
+      throw new Error('Job name and associated function must be supplied.');
+    }
+
     // Attach options to worker
     worker.options = {
       concurrency: options.concurrency || 1
