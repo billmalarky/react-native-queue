@@ -35,19 +35,32 @@ describe('Models/Worker', function() {
     worker.addWorker('test-job-one', async () => {});
 
     const workerOptions = {
-      concurrency: 3
+      concurrency: 3,
+      onStart: async () => {}
     };
     worker.addWorker('test-job-two', async () => {}, workerOptions);
 
     // first worker is added with default options.
     Worker.workers['test-job-one'].should.be.a.Function();
     Worker.workers['test-job-one'].options.should.deepEqual({
-      concurrency: 1
+      concurrency: 1,
+      onStart: null,
+      onSuccess: null,
+      onFailure: null,
+      onFailed: null,
+      onComplete: null
     });
 
     // second worker is added with new concurrency option.
     Worker.workers['test-job-two'].should.be.a.Function();
-    Worker.workers['test-job-two'].options.should.deepEqual(workerOptions);
+    Worker.workers['test-job-two'].options.should.deepEqual({
+      concurrency: workerOptions.concurrency,
+      onStart: workerOptions.onStart,
+      onSuccess: null,
+      onFailure: null,
+      onFailed: null,
+      onComplete: null
+    });
 
   });
 
@@ -192,6 +205,155 @@ describe('Models/Worker', function() {
     counter.should.equal(0);
     await worker.executeJob(job);
     counter.should.equal(1);
+
+  });
+
+  it('#executeJobLifecycleCallback() should execute a job lifecycle method correctly.', async () => {
+
+    let onStartCalled = false;
+    let testPassed = false;
+
+    const job = {
+      id: 'd21dca87-435c-4533-b0af-ed9844e6b827',
+      name: 'test-job-one',
+      payload: JSON.stringify({
+        key: 'value'
+      }),
+      data: JSON.stringify({
+        timeout: 0,
+        attempts: 1
+      }),
+      priority: 0,
+      active: false,
+      created: new Date(),
+      failed: null
+    };
+
+    const worker = new Worker();
+
+    worker.addWorker('test-job-one', async () => {}, {
+      onStart: (id, payload) => {
+
+        onStartCalled = true;
+
+        // Verify params passed correctly off job and payload JSON has been parsed.
+        id.should.equal(job.id);
+        payload.should.deepEqual({
+          key: 'value'
+        });
+
+        // Explicitly mark test as passed because the assertions
+        // directly above will be caught in the try/catch statement within
+        // executeJobLifecycleCallback() if they throw an error. While any thrown errors will be
+        // output to console, the test will still pass so won't be caught by CI testing.
+        testPassed = true;
+
+      }
+    });
+
+    onStartCalled.should.equal(false);
+    const payload = JSON.parse(job.payload); // Payload JSON is always parsed by Queue model before passing to executeJobLifecycleCallback();
+    await worker.executeJobLifecycleCallback('onStart', job.name, job.id, payload);
+    onStartCalled.should.equal(true);
+    testPassed.should.equal(true);
+
+  });
+
+  it('#executeJobLifecycleCallback() should throw an error on invalid job lifecycle name.', async () => {
+
+    let onStartCalled = false;
+    let testPassed = true;
+
+    const job = {
+      id: 'd21dca87-435c-4533-b0af-ed9844e6b827',
+      name: 'test-job-one',
+      payload: JSON.stringify({
+        key: 'value'
+      }),
+      data: JSON.stringify({
+        timeout: 0,
+        attempts: 1
+      }),
+      priority: 0,
+      active: false,
+      created: new Date(),
+      failed: null
+    };
+
+    const worker = new Worker();
+
+    worker.addWorker('test-job-one', async () => {}, {
+      onStart: () => {
+
+        testPassed = false;
+        throw new Error('Should not be called.');
+
+      }
+    });
+
+    onStartCalled.should.equal(false);
+    const payload = JSON.parse(job.payload); // Payload JSON is always parsed by Queue model before passing to executeJobLifecycleCallback();
+    try {
+      await worker.executeJobLifecycleCallback('onInvalidLifecycleName', job.name, job.id, payload);
+    } catch (error) {
+      error.should.deepEqual(new Error('Invalid job lifecycle callback name.'));
+    }
+    onStartCalled.should.equal(false);
+    testPassed.should.equal(true);
+
+  });
+
+  it('#executeJobLifecycleCallback() job lifecycle callbacks that error out should gracefully degrade to console error.', async () => {
+
+    let onStartCalled = false;
+    let consoleErrorCalled = false;
+
+    // Cache console error.
+    const consoleErrorCache = console.error; // eslint-disable-line no-console
+
+    // Overwrite console.error to make sure it gets called on job lifecycle
+    // callback error and is passed the error object.
+    console.error = (errorObject) => { // eslint-disable-line no-console
+      consoleErrorCalled = true;
+      errorObject.should.deepEqual(new Error('Something failed catastrophically!'));
+    };
+
+    const job = {
+      id: 'd21dca87-435c-4533-b0af-ed9844e6b827',
+      name: 'test-job-one',
+      payload: JSON.stringify({
+        key: 'value'
+      }),
+      data: JSON.stringify({
+        timeout: 0,
+        attempts: 1
+      }),
+      priority: 0,
+      active: false,
+      created: new Date(),
+      failed: null
+    };
+
+    const worker = new Worker();
+
+    worker.addWorker('test-job-one', async () => {}, {
+      onStart: () => {
+
+        onStartCalled = true;
+        throw new Error('Something failed catastrophically!');
+
+      }
+    });
+
+    onStartCalled.should.equal(false);
+    consoleErrorCalled.should.equal(false);
+    const payload = JSON.parse(job.payload); // Payload JSON is always parsed by Queue model before passing to executeJobLifecycleCallback();
+    await worker.executeJobLifecycleCallback('onStart', job.name, job.id, payload);
+    onStartCalled.should.equal(true);
+    consoleErrorCalled.should.equal(true);
+
+    // Re-apply console.error.
+    console.error = consoleErrorCache; // eslint-disable-line no-console
 
   });
 
