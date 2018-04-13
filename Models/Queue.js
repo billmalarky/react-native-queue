@@ -308,7 +308,9 @@ export class Queue {
 
   /**
    *
-   * Execute a job.
+   * Process a job.
+   *
+   * Job lifecycle callbacks are called as appropriate throughout the job processing lifecycle.
    *
    * Job is deleted upon successful completion.
    *
@@ -321,25 +323,39 @@ export class Queue {
    */
   async processJob(job) {
 
+    // Data must be cloned off the realm job object for several lifecycle callbacks to work correctly.
+    // This is because realm job is deleted before some callbacks are called if job processed successfully.
+    // More info: https://github.com/billmalarky/react-native-queue/issues/2#issuecomment-361418965
+    const jobName = job.name;
+    const jobId = job.id;
+    const jobPayload = JSON.parse(job.payload);
+
+    // Fire onStart job lifecycle callback
+    this.worker.executeJobLifecycleCallback('onStart', jobName, jobId, jobPayload);
+
     try {
 
       await this.worker.executeJob(job);
 
-      // On job completion, remove job
+      // On successful job completion, remove job
       this.realm.write(() => {
 
         this.realm.delete(job);
 
       });
 
+      // Job has processed successfully, fire onSuccess and onComplete job lifecycle callbacks.
+      this.worker.executeJobLifecycleCallback('onSuccess', jobName, jobId, jobPayload);
+      this.worker.executeJobLifecycleCallback('onComplete', jobName, jobId, jobPayload);
+
     } catch (error) {
 
       // Handle job failure logic, including retries.
+      let jobData = JSON.parse(job.data);
+
       this.realm.write(() => {
 
         // Increment failed attempts number
-        let jobData = JSON.parse(job.data);
-
         if (!jobData.failedAttempts) {
           jobData.failedAttempts = 1;
         } else {
@@ -364,6 +380,15 @@ export class Queue {
         }
 
       });
+
+      // Execute job onFailure lifecycle callback.
+      this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, jobPayload);
+
+      // If job has failed all attempts execute job onFailed and onComplete lifecycle callbacks.
+      if (jobData.failedAttempts >= jobData.attempts) {
+        this.worker.executeJobLifecycleCallback('onFailed', jobName, jobId, jobPayload);
+        this.worker.executeJobLifecycleCallback('onComplete', jobName, jobId, jobPayload);
+      }
 
     }
 

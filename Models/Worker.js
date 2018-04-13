@@ -41,7 +41,12 @@ export default class Worker {
 
     // Attach options to worker
     worker.options = {
-      concurrency: options.concurrency || 1
+      concurrency: options.concurrency || 1,
+      onStart: options.onStart || null,
+      onSuccess: options.onSuccess || null,
+      onFailure: options.onFailure || null,
+      onFailed: options.onFailed || null,
+      onComplete: options.onComplete || null
     };
 
     Worker.workers[jobName] = worker;
@@ -115,6 +120,37 @@ export default class Worker {
 
     } else {
       await Worker.workers[jobName](jobId, jobPayload);
+    }
+
+  }
+
+  /**
+   *
+   * Execute an asynchronous job lifecycle callback associated with related worker.
+   *
+   * @param callbackName {string} - Job lifecycle callback name.
+   * @param jobName {string} - Name associated with jobs assigned to related worker.
+   * @param jobId {string} - Unique id associated with job.
+   * @param jobPayload {object} - Data payload associated with job.
+   */
+  async executeJobLifecycleCallback(callbackName, jobName, jobId, jobPayload) {
+
+    // Validate callback name
+    const validCallbacks = ['onStart', 'onSuccess', 'onFailure', 'onFailed', 'onComplete'];
+    if (!validCallbacks.includes(callbackName)) {
+      throw new Error('Invalid job lifecycle callback name.');
+    }
+
+    // Fire job lifecycle callback if set.
+    // Uses a try catch statement to gracefully degrade errors in production.
+    if (Worker.workers[jobName].options[callbackName]) {
+
+      try {
+        await Worker.workers[jobName].options[callbackName](jobId, jobPayload);
+      } catch (error) {
+        console.error(error); // eslint-disable-line no-console
+      }
+
     }
 
   }

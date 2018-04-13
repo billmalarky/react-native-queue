@@ -17,7 +17,7 @@ A React Native at-least-once priority job queue / task queue backed by persisten
 * [Example Use Cases](#example-use-cases)
 * [Installation](#installation)
 * [Basic Usage](#basic-usage)
-* [Options](#options)
+* [Options and Job Lifecycle Callbacks](#options-and-job-lifecycle-callbacks)
 * [Testing with Jest](#testing-with-jest)
 * [Caveats](#caveats)
 * [Advanced Usage Examples](#advanced-usage-examples)
@@ -30,7 +30,7 @@ A React Native at-least-once priority job queue / task queue backed by persisten
 * **Simple API:** Set up job workers and begin creating your jobs in minutes with just two basic API calls
   * queue.addWorker(name, workerFunction, options = {})  
   * queue.createJob(name, payload = {}, options = {}, startQueue = true) 
-* **Powerful options:** Easily modify default functionality. Set job timeouts, number of retry attempts, priority, and worker concurrency with an options object. Start queue processing with a lifespan to easily meet OS background task time limits.
+* **Powerful options:** Easily modify default functionality. Set job timeouts, number of retry attempts, priority, job lifecycle callbacks, and worker concurrency with an options object. Start queue processing with a lifespan to easily meet OS background task time limits.
 * **Persistent Jobs:** Jobs are persisted with Realm. Because jobs persist, you can easily continue to process jobs across app restarts or in OS background tasks until completed or failed (or app is uninstalled).
 * **Powerful Integrations:** React Native Queue was designed to play well with others. The queue quickly integrates with a variety of OS background task and Worker packages so  processing your jobs in a background service or dedicated thread have never been easier.
 
@@ -147,19 +147,63 @@ console.log('The above jobs are processing in the background of app now.');
 
 ```
 
-## Options
+## Options and Job Lifecycle Callbacks
 
-#### Worker Options
+#### Worker Options (includes async job lifecycle callbacks)
 
-queue.addWorker() accepts an options object in order to tweak standard functionality.
+queue.addWorker() accepts an options object in order to tweak standard functionality and allow you to hook into asynchronous job lifecycle callbacks.
+
+**IMPORTANT: Job Lifecycle callbacks are called asynchronously.** They do not block job processing or each other. Don't put logic in onStart that you expect to be completed before the actual job process begins executing. Don't put logic in onFailure you expect to be completed before onFailed is called. You can, of course, assume that the job process has completed (or failed) before onSuccess, onFailure, onFailed, or onComplete are asynchonrously called.
 
 ```js
 
-queue.addWorker('job-name-here', (id, payload) => { console.log(id); }, {
+queue.addWorker('job-name-here', async (id, payload) => { console.log(id); }, {
   
   // Set max number of jobs for this worker to process concurrently.
   // Defaults to 1.
-  concurrency: 5
+  concurrency: 5,
+  
+  // JOB LIFECYCLE CALLBACKS
+  
+  // onStart job callback handler is fired when a job begins processing.
+  //
+  // IMPORTANT: Job lifecycle callbacks are executed asynchronously and do not block job processing 
+  // (even if the callback returns a promise it will not be "awaited" on).
+  // As such, do not place any logic in onStart that your actual job worker function will depend on,
+  // this type of logic should of course go inside the job worker function itself.
+  onStart: async (id, payload) => {
+    
+    console.log('Job "job-name-here" with id ' + id + ' has started processing.');  
+    
+  },
+  
+  // onSuccess job callback handler is fired after a job successfully completes processing.
+  onSuccess: async (id, payload) => {
+    
+    console.log('Job "job-name-here" with id ' + id + ' was successful.');
+    
+  },
+  
+  // onFailure job callback handler is fired after each time a job fails (onFailed also fires if job has reached max number of attempts).
+  onFailure: async (id, payload) => {
+    
+    console.log('Job "job-name-here" with id ' + id + ' had an attempt end in failure.');
+    
+  },
+  
+  // onFailed job callback handler is fired if job fails enough times to reach max number of attempts.
+  onFailed: async (id, payload) => {
+    
+    console.log('Job "job-name-here" with id ' + id + ' has failed.');
+    
+  },
+  
+  // onComplete job callback handler fires after job has completed processing successfully or failed entirely.
+  onComplete: async (id, payload) => {
+    
+    console.log('Job "job-name-here" with id ' + id + ' has completed processing.');
+    
+  }
   
 }); 
 

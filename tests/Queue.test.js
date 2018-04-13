@@ -700,13 +700,23 @@ describe('Models/Queue', function() {
   it('#addWorker() and removeWorker() should pass calls through to Worker class', async () => {
 
     const queue = await QueueFactory();
-    const workerOptions = { concurrency: 4 };
+    const workerOptions = {
+      concurrency: 4,
+      onSuccess: async (id, payload) => {}
+    };
 
     queue.addWorker('job-name', () => {}, workerOptions);
 
     // first worker is added with default options.
     Worker.workers['job-name'].should.be.a.Function();
-    Worker.workers['job-name'].options.should.deepEqual(workerOptions);
+    Worker.workers['job-name'].options.should.deepEqual({
+      concurrency: workerOptions.concurrency,
+      onStart: null,
+      onSuccess: workerOptions.onSuccess,
+      onFailure: null,
+      onFailed: null,
+      onComplete: null
+    });
 
     queue.removeWorker('job-name');
 
@@ -1578,6 +1588,491 @@ describe('Models/Queue', function() {
     queue.flushQueue('no-jobs-exist-for-this-job-name');
 
     hasDeleteBeenCalled.should.be.False();
+
+  });
+
+  ////
+  //// JOB LIFECYCLE CALLBACK TESTING
+  ////
+
+  it('onStart lifecycle callback fires before job begins processing.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    let jobProcessed = false;
+    let testFailed = false;
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      // Timeout needed because onStart runs async so we need to ensure this function gets
+      // executed last.
+      await new Promise((resolve) => {
+        setTimeout(() => {
+          jobProcessed = true;
+          resolve();
+        }, 0);
+      });
+
+    }, {
+      onStart: (id, payload) => {
+
+        // If onStart runs after job has processed, fail test.
+        if (jobProcessed) {
+          testFailed = true;
+          throw new Error('ERROR: onStart fired after job began processing.')
+        }
+
+      }
+    });
+
+    // Create a job
+    queue.createJob(jobName, { random: 'this is 1st random data' }, {}, false);
+
+    jobProcessed.should.equal(false);
+    testFailed.should.equal(false);
+    await queue.start();
+    jobProcessed.should.equal(true);
+    testFailed.should.equal(false);
+
+  });
+
+  it('onSuccess, onComplete lifecycle callbacks fire after job begins processing.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    let jobProcessed = false;
+    let testFailed = false;
+    let onSuccessFired = false;
+    let onCompleteFired = false;
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      // Simulate work
+      await new Promise((resolve) => {
+        setTimeout(() => {
+          jobProcessed = true;
+          resolve();
+        }, 300);
+      });
+
+    }, {
+      onSuccess: (id, payload) => {
+
+        onSuccessFired = true;
+
+        // If onSuccess runs before job has processed, fail test.
+        if (!jobProcessed) {
+          testFailed = true;
+          throw new Error('ERROR: onSuccess fired before job began processing.')
+        }
+
+      },
+      onComplete: (id, payload) => {
+
+        onCompleteFired = true;
+
+        // If onComplete runs before job has processed, fail test.
+        if (!jobProcessed) {
+          testFailed = true;
+          throw new Error('ERROR: onComplete fired before job began processing.')
+        }
+
+      }
+    });
+
+    // Create a job
+    queue.createJob(jobName, { random: 'this is 1st random data' }, {}, false);
+
+    jobProcessed.should.equal(false);
+    testFailed.should.equal(false);
+    onSuccessFired.should.equal(false);
+    onCompleteFired.should.equal(false);
+    await queue.start();
+    jobProcessed.should.equal(true);
+    testFailed.should.equal(false);
+    onSuccessFired.should.equal(true);
+    onCompleteFired.should.equal(true);
+
+  });
+
+  it('onFailure, onFailed lifecycle callbacks fire after job begins processing.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    let jobProcessStarted = false;
+    let testFailed = false;
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      // Simulate work
+      await new Promise((resolve, reject) => {
+        setTimeout(() => {
+          jobProcessStarted = true;
+          reject(new Error('Job failed.'));
+        }, 300);
+      });
+
+    }, {
+      onFailure: (id, payload) => {
+
+        // If onFailure runs before job has processed, fail test.
+        if (!jobProcessStarted) {
+          testFailed = true;
+          throw new Error('ERROR: onFailure fired before job began processing.')
+        }
+
+      },
+      onFailed: (id, payload) => {
+
+        // If onFailed runs before job has processed, fail test.
+        if (!jobProcessStarted) {
+          testFailed = true;
+          throw new Error('ERROR: onFailed fired before job began processing.')
+        }
+
+      }
+    });
+
+    // Create a job
+    queue.createJob(jobName, { random: 'this is 1st random data' }, {}, false);
+
+    jobProcessStarted.should.equal(false);
+    testFailed.should.equal(false);
+    await queue.start();
+    jobProcessStarted.should.equal(true);
+    testFailed.should.equal(false);
+
+  });
+
+  it('onFailure, onFailed lifecycle callbacks work as expected.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    let jobAttemptCounter = 0;
+    let onFailureFiredCounter = 0;
+    let onFailedFiredCounter = 0;
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      // Simulate work
+      await new Promise((resolve, reject) => {
+        setTimeout(() => {
+          jobAttemptCounter++;
+          reject(new Error('Job failed.'));
+        }, 0);
+      });
+
+    }, {
+
+      onFailure: (id, payload) => {
+
+        onFailureFiredCounter++;
+
+      },
+      onFailed: (id, payload) => {
+
+        onFailedFiredCounter++;
+
+      }
+    });
+
+    const attempts = 3;
+
+    // Create a job
+    queue.createJob(jobName, { random: 'this is 1st random data' }, {
+      attempts
+    }, false);
+
+    jobAttemptCounter.should.equal(0);
+    await queue.start();
+    onFailureFiredCounter.should.equal(attempts);
+    onFailedFiredCounter.should.equal(1);
+    jobAttemptCounter.should.equal(attempts);
+
+  });
+
+  it('onComplete fires only once on job with multiple attempts that ends in success.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    let jobAttemptCounter = 0;
+    let onFailureFiredCounter = 0;
+    let onFailedFiredCounter = 0;
+    let onCompleteFiredCounter = 0;
+    const attempts = 3;
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      jobAttemptCounter++;
+
+      // Keep failing attempts until last attempt then success.
+      if (jobAttemptCounter < attempts) {
+
+        // Simulate work that fails
+        await new Promise((resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error('Job failed.'));
+          }, 0);
+        });
+
+      } else {
+
+        // Simulate work that succeeds
+        await new Promise((resolve, reject) => {
+          setTimeout(() => {
+            resolve();
+          }, 0);
+        });
+
+      }
+
+    }, {
+
+      onFailure: (id, payload) => {
+
+        onFailureFiredCounter++;
+
+      },
+      onFailed: (id, payload) => {
+
+        onFailedFiredCounter++;
+
+      },
+      onComplete: (id, payload) => {
+
+        onCompleteFiredCounter++;
+
+      }
+    });
+
+    // Create a job
+    queue.createJob(jobName, { random: 'this is 1st random data succes' }, {
+      attempts
+    }, false);
+
+    jobAttemptCounter.should.equal(0);
+    await queue.start();
+    onFailureFiredCounter.should.equal(attempts - 1);
+    onFailedFiredCounter.should.equal(0);
+    jobAttemptCounter.should.equal(attempts);
+    onCompleteFiredCounter.should.equal(1);
+
+  });
+
+  it('onComplete fires only once on job with multiple attempts that ends in failure.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    let jobAttemptCounter = 0;
+    let onFailureFiredCounter = 0;
+    let onFailedFiredCounter = 0;
+    let onCompleteFiredCounter = 0;
+    const attempts = 3;
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      jobAttemptCounter++;
+
+      // Simulate work that fails
+      await new Promise((resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error('Job failed.'));
+        }, 0);
+      });
+
+    }, {
+
+      onFailure: (id, payload) => {
+
+        onFailureFiredCounter++;
+
+      },
+      onFailed: (id, payload) => {
+
+        onFailedFiredCounter++;
+
+      },
+      onComplete: (id, payload) => {
+
+        onCompleteFiredCounter++;
+
+      }
+    });
+
+    // Create a job
+    queue.createJob(jobName, { random: 'this is 1st random data' }, {
+      attempts
+    }, false);
+
+    jobAttemptCounter.should.equal(0);
+    await queue.start();
+    onFailureFiredCounter.should.equal(attempts);
+    onFailedFiredCounter.should.equal(1);
+    jobAttemptCounter.should.equal(attempts);
+    onCompleteFiredCounter.should.equal(1);
+
+  });
+
+  it('onStart, onSuccess, onComplete Job lifecycle callbacks do not block job processing.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    let workTracker = [];
+    let tracker = [];
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      // Simulate work
+      await new Promise((resolve) => {
+        workTracker.push(payload.random);
+        tracker.push('job processed');
+        setTimeout(resolve, 0);
+      });
+
+    }, {
+
+      onStart: async (id, payload) => {
+
+        // wait a bit
+        await new Promise((resolve) => {
+          setTimeout(() => {
+            tracker.push('onStart completed.');
+          }, 1000);
+        });
+
+      },
+      onSuccess: async (id, payload) => {
+
+        // wait a bit
+        await new Promise((resolve) => {
+          setTimeout(() => {
+            tracker.push('onSuccess completed.');
+          }, 1000);
+        });
+
+      },
+      onComplete: async (id, payload) => {
+
+        // wait a bit
+        await new Promise((resolve) => {
+          setTimeout(() => {
+            tracker.push('onComplete completed.');
+          }, 1000);
+        });
+
+      }
+    });
+
+    // Create a job
+    queue.createJob(jobName, { random: 'this is 1st random data' }, {}, false);
+    queue.createJob(jobName, { random: 'this is 2nd random data' }, {}, false);
+    queue.createJob(jobName, { random: 'this is 3rd random data' }, {}, false);
+    queue.createJob(jobName, { random: 'this is 4th random data' }, {}, false);
+    queue.createJob(jobName, { random: 'this is 5th random data' }, {}, false);
+
+    await queue.start();
+
+    // Ensure all jobs processed.
+    workTracker.should.containDeep([
+      'this is 1st random data',
+      'this is 2nd random data',
+      'this is 4th random data',
+      'this is 3rd random data',
+      'this is 5th random data'
+    ]);
+
+    // Since lifecycle callbacks take a second to process,
+    // queue should churn through all jobs well before any of the lifecycle
+    // callbacks complete.
+    const firstFive = tracker.slice(0, 5);
+    firstFive.should.deepEqual([
+      'job processed',
+      'job processed',
+      'job processed',
+      'job processed',
+      'job processed'
+    ]);
+
+  });
+
+  it('onFailure, onFailed Job lifecycle callbacks do not block job processing.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    let workTracker = [];
+    let tracker = [];
+
+    queue.addWorker(jobName, async (id, payload) => {
+
+      // Simulate failure
+      await new Promise((resolve, reject) => {
+        workTracker.push(payload.random);
+        setTimeout(() => {
+          tracker.push('job attempted');
+          reject(new Error('job failed'));
+        }, 0);
+      });
+
+    }, {
+      onFailure: async (id, payload) => {
+
+        // wait a bit
+        await new Promise((resolve) => {
+          setTimeout(() => {
+            tracker.push('onFailure completed.');
+          }, 1000);
+        });
+
+      },
+      onFailed: async (id, payload) => {
+
+        // wait a bit
+        await new Promise((resolve) => {
+          setTimeout(() => {
+            tracker.push('onFailed completed.');
+          }, 1000);
+        });
+
+      }
+    });
+
+    // Create a job
+    queue.createJob(jobName, { random: 'this is 1st random data' }, {}, false);
+    queue.createJob(jobName, { random: 'this is 2nd random data' }, {}, false);
+    queue.createJob(jobName, { random: 'this is 3rd random data' }, {}, false);
+    queue.createJob(jobName, { random: 'this is 4th random data' }, {}, false);
+    queue.createJob(jobName, { random: 'this is 5th random data' }, {}, false);
+
+    await queue.start();
+
+    // Ensure all jobs started to process (even though they are failed).
+    workTracker.should.containDeep([
+      'this is 1st random data',
+      'this is 2nd random data',
+      'this is 4th random data',
+      'this is 3rd random data',
+      'this is 5th random data'
+    ]);
+
+    // Since lifecycle callbacks take a second to process,
+    // queue should churn through all jobs well before any of the lifecycle
+    // callbacks complete.
+    const firstFive = tracker.slice(0, 5);
+    firstFive.should.deepEqual([
+      'job attempted',
+      'job attempted',
+      'job attempted',
+      'job attempted',
+      'job attempted'
+    ]);
 
   });
 
