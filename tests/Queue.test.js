@@ -702,7 +702,7 @@ describe('Models/Queue', function() {
     const queue = await QueueFactory();
     const workerOptions = {
       concurrency: 4,
-      onSuccess: async (id, payload) => {}
+      onSuccess: async () => {}
     };
 
     queue.addWorker('job-name', () => {}, workerOptions);
@@ -1603,7 +1603,7 @@ describe('Models/Queue', function() {
     let jobProcessed = false;
     let testFailed = false;
 
-    queue.addWorker(jobName, async (id, payload) => {
+    queue.addWorker(jobName, async () => {
 
       // Timeout needed because onStart runs async so we need to ensure this function gets
       // executed last.
@@ -1615,12 +1615,12 @@ describe('Models/Queue', function() {
       });
 
     }, {
-      onStart: (id, payload) => {
+      onStart: () => {
 
         // If onStart runs after job has processed, fail test.
         if (jobProcessed) {
           testFailed = true;
-          throw new Error('ERROR: onStart fired after job began processing.')
+          throw new Error('ERROR: onStart fired after job began processing.');
         }
 
       }
@@ -1647,7 +1647,7 @@ describe('Models/Queue', function() {
     let onSuccessFired = false;
     let onCompleteFired = false;
 
-    queue.addWorker(jobName, async (id, payload) => {
+    queue.addWorker(jobName, async () => {
 
       // Simulate work
       await new Promise((resolve) => {
@@ -1658,25 +1658,25 @@ describe('Models/Queue', function() {
       });
 
     }, {
-      onSuccess: (id, payload) => {
+      onSuccess: () => {
 
         onSuccessFired = true;
 
         // If onSuccess runs before job has processed, fail test.
         if (!jobProcessed) {
           testFailed = true;
-          throw new Error('ERROR: onSuccess fired before job began processing.')
+          throw new Error('ERROR: onSuccess fired before job began processing.');
         }
 
       },
-      onComplete: (id, payload) => {
+      onComplete: () => {
 
         onCompleteFired = true;
 
         // If onComplete runs before job has processed, fail test.
         if (!jobProcessed) {
           testFailed = true;
-          throw new Error('ERROR: onComplete fired before job began processing.')
+          throw new Error('ERROR: onComplete fired before job began processing.');
         }
 
       }
@@ -1705,7 +1705,7 @@ describe('Models/Queue', function() {
     let jobProcessStarted = false;
     let testFailed = false;
 
-    queue.addWorker(jobName, async (id, payload) => {
+    queue.addWorker(jobName, async () => {
 
       // Simulate work
       await new Promise((resolve, reject) => {
@@ -1716,21 +1716,21 @@ describe('Models/Queue', function() {
       });
 
     }, {
-      onFailure: (id, payload) => {
+      onFailure: () => {
 
         // If onFailure runs before job has processed, fail test.
         if (!jobProcessStarted) {
           testFailed = true;
-          throw new Error('ERROR: onFailure fired before job began processing.')
+          throw new Error('ERROR: onFailure fired before job began processing.');
         }
 
       },
-      onFailed: (id, payload) => {
+      onFailed: () => {
 
         // If onFailed runs before job has processed, fail test.
         if (!jobProcessStarted) {
           testFailed = true;
-          throw new Error('ERROR: onFailed fired before job began processing.')
+          throw new Error('ERROR: onFailed fired before job began processing.');
         }
 
       }
@@ -1756,7 +1756,7 @@ describe('Models/Queue', function() {
     let onFailureFiredCounter = 0;
     let onFailedFiredCounter = 0;
 
-    queue.addWorker(jobName, async (id, payload) => {
+    queue.addWorker(jobName, async () => {
 
       // Simulate work
       await new Promise((resolve, reject) => {
@@ -1768,12 +1768,12 @@ describe('Models/Queue', function() {
 
     }, {
 
-      onFailure: (id, payload) => {
+      onFailure: () => {
 
         onFailureFiredCounter++;
 
       },
-      onFailed: (id, payload) => {
+      onFailed: () => {
 
         onFailedFiredCounter++;
 
@@ -1806,7 +1806,7 @@ describe('Models/Queue', function() {
     let onCompleteFiredCounter = 0;
     const attempts = 3;
 
-    queue.addWorker(jobName, async (id, payload) => {
+    queue.addWorker(jobName, async () => {
 
       jobAttemptCounter++;
 
@@ -1823,7 +1823,7 @@ describe('Models/Queue', function() {
       } else {
 
         // Simulate work that succeeds
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
           setTimeout(() => {
             resolve();
           }, 0);
@@ -1833,17 +1833,17 @@ describe('Models/Queue', function() {
 
     }, {
 
-      onFailure: (id, payload) => {
+      onFailure: () => {
 
         onFailureFiredCounter++;
 
       },
-      onFailed: (id, payload) => {
+      onFailed: () => {
 
         onFailedFiredCounter++;
 
       },
-      onComplete: (id, payload) => {
+      onComplete: () => {
 
         onCompleteFiredCounter++;
 
@@ -1875,7 +1875,7 @@ describe('Models/Queue', function() {
     let onCompleteFiredCounter = 0;
     const attempts = 3;
 
-    queue.addWorker(jobName, async (id, payload) => {
+    queue.addWorker(jobName, async () => {
 
       jobAttemptCounter++;
 
@@ -1888,17 +1888,17 @@ describe('Models/Queue', function() {
 
     }, {
 
-      onFailure: (id, payload) => {
+      onFailure: () => {
 
         onFailureFiredCounter++;
 
       },
-      onFailed: (id, payload) => {
+      onFailed: () => {
 
         onFailedFiredCounter++;
 
       },
-      onComplete: (id, payload) => {
+      onComplete: () => {
 
         onCompleteFiredCounter++;
 
@@ -1938,32 +1938,35 @@ describe('Models/Queue', function() {
 
     }, {
 
-      onStart: async (id, payload) => {
+      onStart: async () => {
 
         // wait a bit
         await new Promise((resolve) => {
           setTimeout(() => {
             tracker.push('onStart completed.');
+            resolve();
           }, 1000);
         });
 
       },
-      onSuccess: async (id, payload) => {
+      onSuccess: async () => {
 
         // wait a bit
         await new Promise((resolve) => {
           setTimeout(() => {
             tracker.push('onSuccess completed.');
+            resolve();
           }, 1000);
         });
 
       },
-      onComplete: async (id, payload) => {
+      onComplete: async () => {
 
         // wait a bit
         await new Promise((resolve) => {
           setTimeout(() => {
             tracker.push('onComplete completed.');
+            resolve();
           }, 1000);
         });
 
@@ -2022,22 +2025,24 @@ describe('Models/Queue', function() {
       });
 
     }, {
-      onFailure: async (id, payload) => {
+      onFailure: async () => {
 
         // wait a bit
         await new Promise((resolve) => {
           setTimeout(() => {
             tracker.push('onFailure completed.');
+            resolve();
           }, 1000);
         });
 
       },
-      onFailed: async (id, payload) => {
+      onFailed: async () => {
 
         // wait a bit
         await new Promise((resolve) => {
           setTimeout(() => {
             tracker.push('onFailed completed.');
+            resolve();
           }, 1000);
         });
 

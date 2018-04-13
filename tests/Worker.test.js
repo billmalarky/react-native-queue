@@ -36,7 +36,7 @@ describe('Models/Worker', function() {
 
     const workerOptions = {
       concurrency: 3,
-      onStart: async (id, payload) => {}
+      onStart: async () => {}
     };
     worker.addWorker('test-job-two', async () => {}, workerOptions);
 
@@ -283,7 +283,7 @@ describe('Models/Worker', function() {
     const worker = new Worker();
 
     worker.addWorker('test-job-one', async () => {}, {
-      onStart: (id, payload) => {
+      onStart: () => {
 
         testPassed = false;
         throw new Error('Should not be called.');
@@ -313,7 +313,7 @@ describe('Models/Worker', function() {
 
     // Overwrite console.error to make sure it gets called on job lifecycle
     // callback error and is passed the error object.
-    console.error = (errorObject) => {
+    console.error = (errorObject) => { // eslint-disable-line no-console
       consoleErrorCalled = true;
       errorObject.should.deepEqual(new Error('Something failed catastrophically!'));
     };
@@ -337,7 +337,7 @@ describe('Models/Worker', function() {
     const worker = new Worker();
 
     worker.addWorker('test-job-one', async () => {}, {
-      onStart: (id, payload) => {
+      onStart: () => {
 
         onStartCalled = true;
         throw new Error('Something failed catastrophically!');
@@ -353,7 +353,7 @@ describe('Models/Worker', function() {
     consoleErrorCalled.should.equal(true);
 
     // Re-apply console.error.
-    console.error = consoleErrorCache;
+    console.error = consoleErrorCache; // eslint-disable-line no-console
 
   });
 
