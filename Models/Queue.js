@@ -87,6 +87,10 @@ export class Queue {
       throw new Error('Job name must be supplied.');
     }
 
+    if (!options.timeout) {
+      options.timeout = 0;
+    }
+
     // Validate options
     if (options.timeout < 0 || options.attempts < 0) {
       throw new Error('Invalid job option.');
@@ -103,7 +107,7 @@ export class Queue {
         }),
         priority: options.priority || 0,
         active: false,
-        timeout: (options.timeout > 0) ? options.timeout : 25000,
+        timeout: options.timeout,
         created: new Date(),
         failed: null
       });
