@@ -2153,4 +2153,35 @@ describe('Models/Queue', function() {
 
   });
 
+  /**
+   *
+   * Regression test for issue 15: Indefinite job Timeout is broken
+   *
+   * https://github.com/billmalarky/react-native-queue/issues/15
+   *
+   */
+  it('does not override an explicitly set job timeout value of 0 with the default value of 25000.', async () => {
+
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+
+    // Attach the worker.
+    queue.addWorker(jobName, async () => {});
+
+    // Create a job
+    queue.createJob(jobName, { random: 'this is 1st random data' }, {
+      timeout: 0
+    }, false);
+
+    // Check that the created job has a timeout value of 0 instead of 25000.
+    const jobs = await queue.getJobs(true);
+    const job = jobs[0];
+    job.timeout.should.equal(0);
+
+    // Flush jobs
+    queue.flushQueue();
+
+  });
+
 });

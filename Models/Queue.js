@@ -103,7 +103,7 @@ export class Queue {
         }),
         priority: options.priority || 0,
         active: false,
-        timeout: (options.timeout > 0) ? options.timeout : 25000,
+        timeout: (options.timeout >= 0) ? options.timeout : 25000,
         created: new Date(),
         failed: null
       });
