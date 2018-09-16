@@ -394,6 +394,10 @@ export class Queue {
 
   }
 
+  removeJob() {
+
+  }
+
   /**
    *
    * Delete jobs in the queue.
