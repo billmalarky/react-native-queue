@@ -394,8 +394,18 @@ export class Queue {
 
     }
 
-    removeJob() {
+    flushJob(jobId) {
 
+        this.realm.write(() => {
+
+            let jobs = this.realm.objects('Job')
+                .filtered('id == "' + jobId + '"');
+
+            if (jobs.length) {
+                this.realm.delete(jobs);
+            }
+
+        });
     }
 
     /**
