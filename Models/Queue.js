@@ -21,6 +21,7 @@ export class Queue {
      * @constructor
      */
     constructor() {
+        this.TAG = 'Queue';
         this.realm = null;
         this.worker = new Worker();
         this.status = 'inactive';
@@ -394,18 +395,28 @@ export class Queue {
 
     }
 
+    /**
+     *
+     * Delete a job in the queue with jobId.
+     *
+     * @param jobId {string} - id associated with job.
+     */
     flushJob(jobId) {
-
-        this.realm.write(() => {
-
-            let jobs = this.realm.objects('Job')
-                .filtered('id == "' + jobId + '"');
-
-            if (jobs.length) {
-                this.realm.delete(jobs);
+        try {
+            if (jobId) {
+                this.realm.write(() => {
+                    let jobs = this.realm
+                        .objects('Job')
+                        .filtered('id == "' + jobId + '"');
+                    if (jobs.length) {
+                        this.realm.delete(jobs);
+                        return;
+                    }
+                });
             }
-
-        });
+        } catch (e) {
+            console.log(this.TAG, 'flushJob failed', jobId);
+        }
     }
 
     /**
