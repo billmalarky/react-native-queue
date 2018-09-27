@@ -339,11 +339,11 @@ export class Queue {
             await this.worker.executeJob(job);
 
             // On successful job completion, remove job
-            this.realm.write(() => {
-
-                this.realm.delete(job);
-
-            });
+            // this.realm.write(() => {
+            //
+            //     this.realm.delete(job);
+            //
+            // });
 
             // Job has processed successfully, fire onSuccess and onComplete job lifecycle callbacks.
             this.worker.executeJobLifecycleCallback('onSuccess', jobName, jobId, jobPayload);
