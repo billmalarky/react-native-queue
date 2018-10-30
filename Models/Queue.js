@@ -427,6 +427,35 @@ export class Queue {
     }
 
   }
+  
+   /**
+   *
+   * Delete a specific job in the queue.
+   *
+   * If jobId is supplied, only the job associated with that id
+   * will be deleted. Otherwise any job in queue will be deleted.
+   *
+   * @param jobId {string} - ID associated with a specific job.
+   */
+  deleteJob(jobId) {
+
+    if (!jobId) {
+      throw new Error('Job ID must be supplied.');
+    }
+
+    this.realm.write(() => {
+
+      let jobs = this.realm.objects('Job')
+        .filtered('id == "' + jobId + '"');
+
+      if (jobs.length) {
+        this.realm.delete(jobs);
+      }
+
+    });
+
+
+  }
 
 
 }
