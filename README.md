@@ -11,6 +11,12 @@
 
 A React Native at-least-once priority job queue / task queue backed by persistent Realm storage. Jobs will persist until completed, even if user closes and re-opens app. React Native Queue is easily integrated into OS background processes (services) so you can ensure the queue will continue to process until all jobs are completed even if app isn't in focus. It also plays well with Workers so your jobs can be thrown on the queue, then processed in dedicated worker threads for greatly improved processing performance.
 
+**This repository (fork from [react-native-queue](https://github.com/billmalarky/react-native-queue)) uses React Native `AsyncStorage` because there were several [problems](https://github.com/realm/realm-js/issues/2185) with launching the app while trying to `react-native link realm` and I have decided to rewrite it with `AsyncStorage` so there is no any third-party DB dependencies.**
+
+**If you would like to use `realm`, please use [original repository](https://github.com/billmalarky/react-native-queue)!** 
+
+**Also I'd like to warn you that there might be issues with `AsyncStorage` implementation because initially the original repository was meant to use `realm` and is not heavily tested with `AsyncStorage`, so be careful. However it worked perfectly in my case 🙂🙃**
+
 ## Table of Contents
 
 * [Features](#features)
