@@ -70,16 +70,6 @@ Or
 $ yarn add react-native-queue
 ```
 
-Then, because this package has a depedency on [Realm](https://github.com/realm/realm-js) you will need to link this native package by running:
-
-```bash
-$ react-native link realm
-```
-
-Linking realm **should only be done once**, reinstalling node_modules with npm or yarn does not require running the above command again.
-
-To troubleshoot linking, refer to [the realm installation instructions](https://realm.io/docs/javascript/latest/#getting-started).
-
 ## Basic Usage
 
 React Native Queue is a standard job/task queue built specifically for react native applications. If you have a long-running task, or a large number of tasks, consider turning that task into a job(s) and throwing it/them onto the queue to be processed in the background instead of blocking your UI until task(s) complete.
