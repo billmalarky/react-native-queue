@@ -2,14 +2,14 @@
  *
  * Queue Model
  *
- * Queue Job Realm Schema defined in ../config/Database
- *
  */
 
-import Database from '../config/Database';
 import uuid from 'react-native-uuid';
-import Worker from './Worker';
 import promiseReflect from 'promise-reflect';
+import _ from 'lodash';
+
+import JobDatabase from '../config/Database';
+import Worker from './Worker';
 
 
 export class Queue {
@@ -21,19 +21,19 @@ export class Queue {
    * @constructor
    */
   constructor() {
-    this.realm = null;
+    this.jobDB = null;
     this.worker = new Worker();
     this.status = 'inactive';
   }
 
   /**
    *
-   * Initializes the queue by connecting to Realm database.
+   * Initializes the queue by connecting to jobDB database.
    *
    */
-  async init() {
-    if (this.realm === null) {
-      this.realm = await Database.getRealmInstance();
+  init() {
+    if (this.jobDB === null) {
+      this.jobDB = new JobDatabase();
     }
   }
 
@@ -81,7 +81,7 @@ export class Queue {
    * @param options {object} - Job related options like timeout etc. See README.md for job options info.
    * @param startQueue - {boolean} - Whether or not to immediately begin prcessing queue. If false queue.start() must be manually called.
    */
-  createJob(name, payload = {}, options = {}, startQueue = true) {
+  async createJob(name, payload = {}, options = {}, startQueue = true) {
 
     if (!name) {
       throw new Error('Job name must be supplied.');
@@ -92,22 +92,18 @@ export class Queue {
       throw new Error('Invalid job option.');
     }
 
-    this.realm.write(() => {
-
-      this.realm.create('Job', {
-        id: uuid.v4(),
-        name,
-        payload: JSON.stringify(payload),
-        data: JSON.stringify({
-          attempts: options.attempts || 1
-        }),
-        priority: options.priority || 0,
-        active: false,
-        timeout: (options.timeout >= 0) ? options.timeout : 25000,
-        created: new Date(),
-        failed: null
-      });
-
+    await this.jobDB.create({
+      id: uuid.v4(),
+      name,
+      payload: JSON.stringify(payload),
+      data: JSON.stringify({
+        attempts: options.attempts || 1
+      }),
+      priority: options.priority || 0,
+      active: false,
+      timeout: (options.timeout >= 0) ? options.timeout : 25000,
+      created: new Date(),
+      failed: null
     });
 
     // Start queue on job creation if it isn't running by default.
@@ -132,7 +128,7 @@ export class Queue {
    * This is useful, as an example, for OS background tasks which typically are time limited.
    *
    * NOTE: If lifespan is set, only jobs with a timeout property at least 500ms less than remaining lifespan will be processed
-   * during queue processing lifespan. This is to buffer for the small amount of time required to query Realm for suitable
+   * during queue processing lifespan. This is to buffer for the small amount of time required to query for suitable
    * jobs, and to mark such jobs as complete or failed when job finishes processing.
    *
    * IMPORTANT: Jobs with timeout set to 0 that run indefinitely will not be processed if the queue is running with a lifespan.
@@ -162,7 +158,7 @@ export class Queue {
       concurrentJobs = await this.getConcurrentJobs();
     }
 
-    while (this.status == 'active' && concurrentJobs.length) {
+    while (this.status === 'active' && concurrentJobs.length) {
 
       // Loop over jobs and process them concurrently.
       const processingJobs = concurrentJobs.map( job => {
@@ -207,23 +203,8 @@ export class Queue {
    * @param sync {boolean} - This should be true if you want to guarantee job data is fresh. Otherwise you could receive job data that is not up to date if a write transaction is occuring concurrently.
    * @return {promise} - Promise that resolves to a collection of all the jobs in the queue.
    */
-  async getJobs(sync = false) {
-
-    if (sync) {
-
-      let jobs = null;
-      this.realm.write(() => {
-
-        jobs = this.realm.objects('Job');
-
-      });
-
-      return jobs;
-
-    } else {
-      return await this.realm.objects('Job');
-    }
-
+  async getJobs() {
+    return this.jobDB.objects();
   }
 
   /**
@@ -244,63 +225,54 @@ export class Queue {
 
     let concurrentJobs = [];
 
-    this.realm.write(() => {
+    // Get next job from queue.
+    let nextJob = null;
 
-      // Get next job from queue.
-      let nextJob = null;
+    // Build query string
+    // If queueLife
+    const timeoutUpperBound = (queueLifespanRemaining - 500 > 0) ? queueLifespanRemaining - 499 : 0; // Only get jobs with timeout at least 500ms < queueLifespanRemaining.
 
-      // Build query string
-      // If queueLife
-      const timeoutUpperBound = (queueLifespanRemaining - 500 > 0) ? queueLifespanRemaining - 499 : 0; // Only get jobs with timeout at least 500ms < queueLifespanRemaining.
+    let jobs = await this.jobDB.objects();
+    jobs = (queueLifespanRemaining) 
+      ? jobs.filter(j => (!j.active && j.failed === null && j.timeout > 0 && j.timeout < timeoutUpperBound))
+      : jobs.filter(j => (!j.active && j.failed === null));
+    jobs = _.orderBy(jobs, ['priority', 'created'], ['asc', 'desc']);
 
-      const initialQuery = (queueLifespanRemaining)
-        ? 'active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
-        : 'active == FALSE AND failed == null';
+    if (jobs.length) {
+      nextJob = jobs[0];
+    }
 
-      let jobs = this.realm.objects('Job')
-        .filtered(initialQuery)
-        .sorted([['priority', true], ['created', false]]);
+    // If next job exists, get concurrent related jobs appropriately.
+    if (nextJob) {
 
-      if (jobs.length) {
-        nextJob = jobs[0];
-      }
+      const concurrency = this.worker.getConcurrency(nextJob.name);
 
-      // If next job exists, get concurrent related jobs appropriately.
-      if (nextJob) {
+      let allRelatedJobs = await this.jobDB.objects();
+      allRelatedJobs = (queueLifespanRemaining) 
+        ? allRelatedJobs.filter(j => (j.name === nextJob.name && !j.active && j.failed === null && j.timeout > 0 && j.timeout < timeoutUpperBound))
+        : allRelatedJobs.filter(j => (j.name === nextJob.name && !j.active && j.failed === null));
+      allRelatedJobs = _.orderBy(allRelatedJobs, ['priority', 'created'], ['asc', 'desc']);
 
-        const concurrency = this.worker.getConcurrency(nextJob.name);
+      let jobsToMarkActive = allRelatedJobs.slice(0, concurrency);
 
-        const allRelatedJobsQuery = (queueLifespanRemaining)
-          ? 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
-          : 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null';
+      // Grab concurrent job ids to reselect jobs as marking these jobs as active will remove
+      // them from initial selection when write transaction exits.
+      // See: https://stackoverflow.com/questions/47359368/does-realm-support-select-for-update-style-read-locking/47363356#comment81772710_47363356
+      const concurrentJobIds = jobsToMarkActive.map( job => job.id);
 
-        const allRelatedJobs = this.realm.objects('Job')
-          .filtered(allRelatedJobsQuery)
-          .sorted([['priority', true], ['created', false]]);
+      // Mark concurrent jobs as active
+      jobsToMarkActive = jobsToMarkActive.map( job => {
+        job.active = true;
+      });
 
-        let jobsToMarkActive = allRelatedJobs.slice(0, concurrency);
+      // Reselect now-active concurrent jobs by id.
+      let reselectedJobs = await this.jobDB.objects();
+      reselectedJobs = reselectedJobs.filter(rj => _.includes(concurrentJobIds, rj.id));
+      reselectedJobs = _.orderBy(reselectedJobs, ['priority', 'created'], ['asc', 'desc']);
 
-        // Grab concurrent job ids to reselect jobs as marking these jobs as active will remove
-        // them from initial selection when write transaction exits.
-        // See: https://stackoverflow.com/questions/47359368/does-realm-support-select-for-update-style-read-locking/47363356#comment81772710_47363356
-        const concurrentJobIds = jobsToMarkActive.map( job => job.id);
+      concurrentJobs = reselectedJobs.slice(0, concurrency);
 
-        // Mark concurrent jobs as active
-        jobsToMarkActive = jobsToMarkActive.map( job => {
-          job.active = true;
-        });
-
-        // Reselect now-active concurrent jobs by id.
-        const reselectQuery = concurrentJobIds.map( jobId => 'id == "' + jobId + '"').join(' OR ');
-        const reselectedJobs = this.realm.objects('Job')
-          .filtered(reselectQuery)
-          .sorted([['priority', true], ['created', false]]);
-
-        concurrentJobs = reselectedJobs.slice(0, concurrency);
-
-      }
-
-    });
+    }
 
     return concurrentJobs;
 
@@ -319,12 +291,12 @@ export class Queue {
    * Job will be re-attempted up to the specified "attempts" setting (defaults to 1),
    * after which it will be marked as failed and not re-attempted further.
    *
-   * @param job {object} - Job realm model object
+   * @param job {object} - Job model object
    */
   async processJob(job) {
 
-    // Data must be cloned off the realm job object for several lifecycle callbacks to work correctly.
-    // This is because realm job is deleted before some callbacks are called if job processed successfully.
+    // Data must be cloned off the job object for several lifecycle callbacks to work correctly.
+    // This is because job is deleted before some callbacks are called if job processed successfully.
     // More info: https://github.com/billmalarky/react-native-queue/issues/2#issuecomment-361418965
     const jobName = job.name;
     const jobId = job.id;
@@ -338,11 +310,7 @@ export class Queue {
       await this.worker.executeJob(job);
 
       // On successful job completion, remove job
-      this.realm.write(() => {
-
-        this.realm.delete(job);
-
-      });
+      await this.jobDB.delete(job);
 
       // Job has processed successfully, fire onSuccess and onComplete job lifecycle callbacks.
       this.worker.executeJobLifecycleCallback('onSuccess', jobName, jobId, jobPayload);
@@ -353,33 +321,29 @@ export class Queue {
       // Handle job failure logic, including retries.
       let jobData = JSON.parse(job.data);
 
-      this.realm.write(() => {
+      // Increment failed attempts number
+      if (!jobData.failedAttempts) {
+        jobData.failedAttempts = 1;
+      } else {
+        jobData.failedAttempts++;
+      }
 
-        // Increment failed attempts number
-        if (!jobData.failedAttempts) {
-          jobData.failedAttempts = 1;
-        } else {
-          jobData.failedAttempts++;
-        }
+      // Log error
+      if (!jobData.errors) {
+        jobData.errors = [ error.message ];
+      } else {
+        jobData.errors.push(error.message);
+      }
 
-        // Log error
-        if (!jobData.errors) {
-          jobData.errors = [ error.message ];
-        } else {
-          jobData.errors.push(error.message);
-        }
+      job.data = JSON.stringify(jobData);
 
-        job.data = JSON.stringify(jobData);
+      // Reset active status
+      job.active = false;
 
-        // Reset active status
-        job.active = false;
-
-        // Mark job as failed if too many attempts
-        if (jobData.failedAttempts >= jobData.attempts) {
-          job.failed = new Date();
-        }
-
-      });
+      // Mark job as failed if too many attempts
+      if (jobData.failedAttempts >= jobData.attempts) {
+        job.failed = new Date();
+      }
 
       // Execute job onFailure lifecycle callback.
       this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, jobPayload);
@@ -403,31 +367,23 @@ export class Queue {
    *
    * @param jobName {string} - Name associated with job (and related job worker).
    */
-  flushQueue(jobName = null) {
+  async flushQueue(jobName = null) {
 
     if (jobName) {
 
-      this.realm.write(() => {
+      let jobs = await this.jobDB.objects();
+      jobs = jobs.filter(j => j.name === jobName);
 
-        let jobs = this.realm.objects('Job')
-          .filtered('name == "' + jobName + '"');
-
-        if (jobs.length) {
-          this.realm.delete(jobs);
-        }
-
-      });
+      if (jobs.length) {
+        // NOTE: might not work
+        await this.jobDB.delete(jobs);
+      }
 
     } else {
-      this.realm.write(() => {
-
-        this.realm.deleteAll();
-
-      });
+      await this.jobDB.deleteAll();
     }
 
   }
-
 
 }
 

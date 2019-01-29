@@ -1,11 +1,15 @@
 /**
- * Realm database bootstrap
+ * DB imitation based on RN AsyncStorage 
  */
 
-import { Config } from './config';
-import Realm from 'realm';
+import storage from './Storage';
 
-const JobSchema = {
+
+/*
+
+=== SCHEMA ===
+
+JobSchema = {
   name: 'Job',
   primaryKey: 'id',
   properties: {
@@ -19,30 +23,33 @@ const JobSchema = {
     created: 'date', // Job creation timestamp.
     failed: 'date?' // Job failure timestamp (null until failure).
   }
-};
+}
+
+=== ====== ===
+
+*/
+
+const Job = '@queue:Job';
 
 export default class Database {
 
-  static realmInstance = null; // Use a singleton connection to realm for performance.
+  constructor() { }
 
-  static async getRealmInstance(options = {}) {
+  create = async (obj) => {
+    await storage.push(Job, obj);
+  };
 
-    // Connect to realm if database singleton instance has not already been created.
-    if (Database.realmInstance === null) {
+  objects = async () => storage.get(Job);
 
-      Database.realmInstance = await Realm.open({
-        path: options.realmPath || Config.REALM_PATH,
-        schemaVersion: Config.REALM_SCHEMA_VERSION,
-        schema: [JobSchema]
+  delete = async (obj) => {
+    let objs = await this.objects();
+    objs = objs.filter(o => o.id !== obj.id);
 
-        // Look up shouldCompactOnLaunch to auto-vacuum https://github.com/realm/realm-js/pull/1209/files
+    await storage.save(Job, objs);
+  };
 
-      });
-
-    }
-
-    return Database.realmInstance;
-
-  }
+  deleteAll = async () => {
+    await storage.delete(Job);
+  };
 
 }
