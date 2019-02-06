@@ -19,11 +19,14 @@ export class Queue {
    * Set initial class properties.
    *
    * @constructor
+   *
+   * @param executeFailedJobsOnStart {boolean} - Indicates if previously failed jobs will be executed on start (actually when created new job).
    */
-  constructor() {
+  constructor(executeFailedJobsOnStart = false) {
     this.jobDB = null;
     this.worker = new Worker();
     this.status = 'inactive';
+    this.executeFailedJobsOnStart = executeFailedJobsOnStart;
   }
 
   /**
@@ -31,9 +34,10 @@ export class Queue {
    * Initializes the queue by connecting to jobDB database.
    *
    */
-  init() {
+  init = async () => {
     if (this.jobDB === null) {
       this.jobDB = new JobDatabase();
+      await this.jobDB.init();
     }
   }
 
@@ -81,7 +85,7 @@ export class Queue {
    * @param options {object} - Job related options like timeout etc. See README.md for job options info.
    * @param startQueue - {boolean} - Whether or not to immediately begin prcessing queue. If false queue.start() must be manually called.
    */
-  async createJob(name, payload = {}, options = {}, startQueue = true) {
+  createJob(name, payload = {}, options = {}, startQueue = true) {
 
     if (!name) {
       throw new Error('Job name must be supplied.');
@@ -92,7 +96,20 @@ export class Queue {
       throw new Error('Invalid job option.');
     }
 
-    await this.jobDB.create({
+    // here we reset `failed` prop
+    if (this.executeFailedJobsOnStart) {
+      const jobs = this.jobDB.objects();
+
+      for (let i = 0; i < jobs.length; i += 1) {
+        jobs[i].failed = null;
+      }
+
+      this.jobDB.saveAll(jobs);
+
+      this.executeFailedJobsOnStart = false;
+    }
+
+    this.jobDB.create({
       id: uuid.v4(),
       name,
       payload: JSON.stringify(payload),
@@ -103,11 +120,11 @@ export class Queue {
       active: false,
       timeout: (options.timeout >= 0) ? options.timeout : 25000,
       created: new Date(),
-      failed: null
+      failed: null,
     });
 
     // Start queue on job creation if it isn't running by default.
-    if (startQueue && this.status == 'inactive') {
+    if (startQueue && this.status === 'inactive') {
       this.start();
     }
 
@@ -232,11 +249,12 @@ export class Queue {
     // If queueLife
     const timeoutUpperBound = (queueLifespanRemaining - 500 > 0) ? queueLifespanRemaining - 499 : 0; // Only get jobs with timeout at least 500ms < queueLifespanRemaining.
 
-    let jobs = await this.jobDB.objects();
-    jobs = (queueLifespanRemaining) 
+    let jobs = this.jobDB.objects();
+    jobs = (queueLifespanRemaining)
       ? jobs.filter(j => (!j.active && j.failed === null && j.timeout > 0 && j.timeout < timeoutUpperBound))
       : jobs.filter(j => (!j.active && j.failed === null));
-    jobs = _.orderBy(jobs, ['priority', 'created'], ['asc', 'desc']);
+    jobs = _.orderBy(jobs, ['priority', 'created'], ['asc', 'asc']);
+    // NOTE: here and below 'created' is sorted by 'asc' however in original it's 'desc'
 
     if (jobs.length) {
       nextJob = jobs[0];
@@ -247,11 +265,11 @@ export class Queue {
 
       const concurrency = this.worker.getConcurrency(nextJob.name);
 
-      let allRelatedJobs = await this.jobDB.objects();
+      let allRelatedJobs = this.jobDB.objects();
       allRelatedJobs = (queueLifespanRemaining) 
         ? allRelatedJobs.filter(j => (j.name === nextJob.name && !j.active && j.failed === null && j.timeout > 0 && j.timeout < timeoutUpperBound))
         : allRelatedJobs.filter(j => (j.name === nextJob.name && !j.active && j.failed === null));
-      allRelatedJobs = _.orderBy(allRelatedJobs, ['priority', 'created'], ['asc', 'desc']);
+      allRelatedJobs = _.orderBy(allRelatedJobs, ['priority', 'created'], ['asc', 'asc']);
 
       let jobsToMarkActive = allRelatedJobs.slice(0, concurrency);
 
@@ -266,9 +284,9 @@ export class Queue {
       });
 
       // Reselect now-active concurrent jobs by id.
-      let reselectedJobs = await this.jobDB.objects();
+      let reselectedJobs = this.jobDB.objects();
       reselectedJobs = reselectedJobs.filter(rj => _.includes(concurrentJobIds, rj.id));
-      reselectedJobs = _.orderBy(reselectedJobs, ['priority', 'created'], ['asc', 'desc']);
+      reselectedJobs = _.orderBy(reselectedJobs, ['priority', 'created'], ['asc', 'asc']);
 
       concurrentJobs = reselectedJobs.slice(0, concurrency);
 
@@ -310,7 +328,7 @@ export class Queue {
       await this.worker.executeJob(job);
 
       // On successful job completion, remove job
-      await this.jobDB.delete(job);
+      this.jobDB.delete(job);
 
       // Job has processed successfully, fire onSuccess and onComplete job lifecycle callbacks.
       this.worker.executeJobLifecycleCallback('onSuccess', jobName, jobId, jobPayload);
@@ -345,6 +363,8 @@ export class Queue {
         job.failed = new Date();
       }
 
+      this.jobDB.save(job);
+
       // Execute job onFailure lifecycle callback.
       this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, jobPayload);
 
@@ -371,16 +391,16 @@ export class Queue {
 
     if (jobName) {
 
-      let jobs = await this.jobDB.objects();
+      let jobs = this.jobDB.objects();
       jobs = jobs.filter(j => j.name === jobName);
 
       if (jobs.length) {
         // NOTE: might not work
-        await this.jobDB.delete(jobs);
+        this.jobDB.delete(jobs);
       }
 
     } else {
-      await this.jobDB.deleteAll();
+      this.jobDB.deleteAll();
     }
 
   }
@@ -391,11 +411,13 @@ export class Queue {
  *
  * Factory should be used to create a new queue instance.
  *
+ * @param executeFailedJobsOnStart {boolean} - Indicates if previously failed jobs will be executed on start (actually when created new job).
+ *
  * @return {Queue} - A queue instance.
  */
-export default async function queueFactory() {
+export default async function queueFactory(executeFailedJobsOnStart = false) {
 
-  const queue = new Queue();
+  const queue = new Queue(executeFailedJobsOnStart);
   await queue.init();
 
   return queue;
