@@ -1,5 +1,5 @@
 /**
- * DB imitation based on RN AsyncStorage 
+ * DB imitation based on array with help of RN AsyncStorage
  */
 
 import storage from './Storage';
@@ -29,27 +29,57 @@ JobSchema = {
 
 */
 
+const BACKUP_TIME = 50;
 const Job = '@queue:Job';
 
 export default class Database {
+  db = [];
 
-  constructor() { }
+  init = async () => {
+    // await storage.delete(Job); // to delete all jobs
+    await this._restore();
+    await this._backup();
+  }
 
-  create = async (obj) => {
-    await storage.push(Job, obj);
+  _restore = async () => {
+    const jobDB = await storage.get(Job);
+    this.db = jobDB || [];
+  }
+
+  _backup = async () => {
+    await storage.save(Job, this.db.slice());
+
+    setTimeout(await this._backup, BACKUP_TIME);
+  }
+
+  create = (obj) => {
+    let shouldSkip = false; // if obj.id is already in array
+
+    for (let i = 0; i < this.db.length; i += 1) {
+      if (this.db[i] === obj.id) shouldSkip = true;
+    }
+
+    if (!shouldSkip) this.db.push(obj);
   };
 
-  objects = async () => storage.get(Job);
+  objects = () => this.db.slice();
 
-  delete = async (obj) => {
-    let objs = await this.objects();
-    objs = objs.filter(o => o.id !== obj.id);
+  save = (obj) => {
+    for (let i = 0; i < this.db.length; i += 1) {
+      if (this.db[i] === obj.id) this.db[i] = obj;
+    }
+  }
 
-    await storage.save(Job, objs);
+  saveAll = (objs) => {
+    this.db = objs;
+  }
+
+  delete = (obj) => {
+    this.db = this.db.filter(o => o.id !== obj.id);
   };
 
-  deleteAll = async () => {
-    await storage.delete(Job);
+  deleteAll = () => {
+    this.db = [];
   };
 
 }
