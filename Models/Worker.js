@@ -118,10 +118,9 @@ export default class Worker {
 
       return Promise.race([timeoutPromise, Worker.workers[jobName](jobId, jobPayload)]);
 
-    } else {
-      return Worker.workers[jobName](jobId, jobPayload);
     }
 
+    return Worker.workers[jobName](jobId, jobPayload);
   }
 
   /**
