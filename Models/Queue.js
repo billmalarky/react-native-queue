@@ -324,9 +324,9 @@ export class Queue {
     this.worker.executeJobLifecycleCallback('onStart', jobName, jobId, jobPayload);
 
     try {
-      const executionResult = await this.worker.executeJob(job);
-
-      if (!executionResult.ok) throw new Error('Execution failure');
+      const executionResult = await this.worker.executeJob(job); // here we catch js/network errors
+      
+      if (!executionResult.ok) throw new Error('Execution failure'); // here we catch http errors
 
       // On successful job completion, remove job
       this.jobDB.delete(job);
@@ -336,7 +336,6 @@ export class Queue {
       this.worker.executeJobLifecycleCallback('onComplete', jobName, jobId, jobPayload);
 
     } catch (error) {
-
       // Handle job failure logic, including retries.
       let jobData = JSON.parse(job.data);
 
@@ -367,7 +366,15 @@ export class Queue {
       this.jobDB.save(job);
 
       // Execute job onFailure lifecycle callback.
-      this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, jobPayload, error);
+
+      if ( // filter network errors
+        error.message.indexOf('TIMEOUT') !== -1 ||
+        error.message.indexOf('Network request failed') !== -1
+      ) return false;
+
+      if (jobData.failedAttempts === 1 || jobData.failedAttempts === jobData.attempts) { // report only first and last error
+        this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, jobPayload, error);
+      }
 
       // If job has failed all attempts execute job onFailed and onComplete lifecycle callbacks.
       if (jobData.failedAttempts >= jobData.attempts) {
