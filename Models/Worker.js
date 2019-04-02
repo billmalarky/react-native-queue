@@ -105,16 +105,24 @@ export default class Worker {
     const jobName = job.name;
     const jobTimeout = job.timeout;
     const jobPayload = JSON.parse(job.payload);
+    const jobBackOff = job.backoff;
+    const useBackOff = job.backoffEnabled;
 
     if (jobTimeout > 0) {
 
       let timeoutPromise = new Promise((resolve, reject) => {
-
         setTimeout(() => {
           reject(new Error('TIMEOUT: Job id: ' + jobId + ' timed out in ' + jobTimeout  + 'ms.'));
         }, jobTimeout);
 
       });
+
+      if(useBackOff){
+        //Wait for the backoff which should be lower than 30000 ( 30 seconds ) for iOS devices
+        await new Promise((resolve) => {
+          setTimeout(() => {resolve()}, jobBackOff*1000)
+        });
+      }
 
       await Promise.race([timeoutPromise, Worker.workers[jobName](jobId, jobPayload)]);
 

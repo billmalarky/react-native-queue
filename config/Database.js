@@ -16,6 +16,8 @@ const JobSchema = {
     priority: 'int', // -5 to 5 to indicate low to high priority.
     active: { type: 'bool', default: false}, // Whether or not job is currently being processed.
     timeout: 'int', // Job timeout in ms. 0 means no timeout.
+    backoff: {type: 'int',  default: 0}, // Exponential back off, in seconds, of the job in case of failure.
+    backoffEnabled: {type: 'bool', default: false},
     created: 'date', // Job creation timestamp.
     failed: 'date?' // Job failure timestamp (null until failure).
   }

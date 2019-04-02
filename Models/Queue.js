@@ -101,6 +101,7 @@ export class Queue {
         data: JSON.stringify({
           attempts: options.attempts || 1
         }),
+        backoffEnabled: options.backoffEnabled,
         priority: options.priority || 0,
         active: false,
         timeout: (options.timeout >= 0) ? options.timeout : 25000,
@@ -379,6 +380,7 @@ export class Queue {
           job.failed = new Date();
         }
 
+        job.backoff = 2 ** jobData.failedAttempts++;
       });
 
       // Execute job onFailure lifecycle callback.
