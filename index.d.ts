@@ -3,13 +3,15 @@ declare module "react-native-queue" {
         realmPath: string;
     }
 
+    interface WorkerLifecycleCallback { (id: string, payload: any): Promise<any>; }
+
     interface WorkerOptions {
         concurrency?: number;
-        onStart?: (id: string, payload: any) => {};
-        onSuccess?: (id: string, payload: any) => {};
-        onFailure?: (id: string, payload: any) => {};
-        onFailed?: (id: string, payload: any) => {};
-        onComplete?: (id: string, payload: any) => {};
+        onStart?: WorkerLifecycleCallback;
+        onSuccess?: WorkerLifecycleCallback;
+        onFailure?: WorkerLifecycleCallback;
+        onFailed?: WorkerLifecycleCallback;
+        onComplete?: WorkerLifecycleCallback;
     }
 
     interface JobOptions {
