@@ -341,7 +341,7 @@ export class Queue {
 
     try {
 
-      await this.worker.executeJob(job);
+      const result = await this.worker.executeJob(job);
 
       // On successful job completion, remove job
       this.realm.write(() => {
@@ -351,8 +351,8 @@ export class Queue {
       });
 
       // Job has processed successfully, fire onSuccess and onComplete job lifecycle callbacks.
-      this.worker.executeJobLifecycleCallback('onSuccess', jobName, jobId, jobPayload);
-      this.worker.executeJobLifecycleCallback('onComplete', jobName, jobId, jobPayload);
+      this.worker.executeJobLifecycleCallback('onSuccess', jobName, jobId, { payload: jobPayload, result: result });
+      this.worker.executeJobLifecycleCallback('onComplete', jobName, jobId, { payload: jobPayload, result: result });
 
     } catch (error) {
 
@@ -388,12 +388,12 @@ export class Queue {
       });
 
       // Execute job onFailure lifecycle callback.
-      this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, jobPayload);
+      this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, { payload: jobPayload, error: error });
 
       // If job has failed all attempts execute job onFailed and onComplete lifecycle callbacks.
       if (jobData.failedAttempts >= jobData.attempts) {
-        this.worker.executeJobLifecycleCallback('onFailed', jobName, jobId, jobPayload);
-        this.worker.executeJobLifecycleCallback('onComplete', jobName, jobId, jobPayload);
+        this.worker.executeJobLifecycleCallback('onFailed', jobName, jobId, { payload: jobPayload, error: error });
+        this.worker.executeJobLifecycleCallback('onComplete', jobName, jobId, { payload: jobPayload, error: error });
       }
 
     }
