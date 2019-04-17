@@ -7,6 +7,7 @@
  */
 
 import Database from '../config/Database';
+import { Config } from '../config/config';
 import uuid from 'react-native-uuid';
 import Worker from './Worker';
 import promiseReflect from 'promise-reflect';
@@ -20,7 +21,12 @@ export class Queue {
    *
    * @constructor
    */
-  constructor() {
+  defaultConfig = {
+    realmPath: Config.REALM_PATH,
+  };
+
+  constructor(config = {}) {
+    this.config = Object.assign({}, this.defaultConfig, config);
     this.realm = null;
     this.worker = new Worker();
     this.status = 'inactive';
@@ -33,7 +39,7 @@ export class Queue {
    */
   async init() {
     if (this.realm === null) {
-      this.realm = await Database.getRealmInstance();
+      this.realm = await Database.getRealmInstance(this.config);
     }
   }
 
@@ -165,7 +171,7 @@ export class Queue {
     while (this.status == 'active' && concurrentJobs.length) {
 
       // Loop over jobs and process them concurrently.
-      const processingJobs = concurrentJobs.map( job => {
+      const processingJobs = concurrentJobs.map(job => {
         return this.processJob(job);
       });
 
@@ -271,8 +277,8 @@ export class Queue {
         const concurrency = this.worker.getConcurrency(nextJob.name);
 
         const allRelatedJobsQuery = (queueLifespanRemaining)
-          ? 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
-          : 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null';
+          ? 'name == "' + nextJob.name + '" AND active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
+          : 'name == "' + nextJob.name + '" AND active == FALSE AND failed == null';
 
         const allRelatedJobs = this.realm.objects('Job')
           .filtered(allRelatedJobsQuery)
@@ -283,15 +289,15 @@ export class Queue {
         // Grab concurrent job ids to reselect jobs as marking these jobs as active will remove
         // them from initial selection when write transaction exits.
         // See: https://stackoverflow.com/questions/47359368/does-realm-support-select-for-update-style-read-locking/47363356#comment81772710_47363356
-        const concurrentJobIds = jobsToMarkActive.map( job => job.id);
+        const concurrentJobIds = jobsToMarkActive.map(job => job.id);
 
         // Mark concurrent jobs as active
-        jobsToMarkActive = jobsToMarkActive.map( job => {
+        jobsToMarkActive = jobsToMarkActive.map(job => {
           job.active = true;
         });
 
         // Reselect now-active concurrent jobs by id.
-        const reselectQuery = concurrentJobIds.map( jobId => 'id == "' + jobId + '"').join(' OR ');
+        const reselectQuery = concurrentJobIds.map(jobId => 'id == "' + jobId + '"').join(' OR ');
         const reselectedJobs = this.realm.objects('Job')
           .filtered(reselectQuery)
           .sorted([['priority', true], ['created', false]]);
@@ -364,7 +370,7 @@ export class Queue {
 
         // Log error
         if (!jobData.errors) {
-          jobData.errors = [ error.message ];
+          jobData.errors = [error.message];
         } else {
           jobData.errors.push(error.message);
         }
@@ -437,9 +443,9 @@ export class Queue {
  *
  * @return {Queue} - A queue instance.
  */
-export default async function queueFactory() {
+export default async function queueFactory(config = {}) {
 
-  const queue = new Queue();
+  const queue = new Queue(config);
   await queue.init();
 
   return queue;
