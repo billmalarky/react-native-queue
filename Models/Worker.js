@@ -116,10 +116,10 @@ export default class Worker {
 
       });
 
-      await Promise.race([timeoutPromise, Worker.workers[jobName](jobId, jobPayload)]);
+      return await Promise.race([timeoutPromise, Worker.workers[jobName](jobId, jobPayload)]);
 
     } else {
-      await Worker.workers[jobName](jobId, jobPayload);
+      return await Worker.workers[jobName](jobId, jobPayload);
     }
 
   }
