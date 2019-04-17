@@ -32,7 +32,7 @@ declare module "react-native-queue" {
         failed?: Date       // Job failure timestamp (null until failure).
     }
 
-    class Queue {
+    export class RNQueue {
         constructor(config: QueueFactoryConfig);
         addWorker(jobName: string, worker: (id: string, payload: any) => {}, options?: WorkerOptions): void;
         removeWorker(jobName: string): void;
@@ -45,7 +45,7 @@ declare module "react-native-queue" {
         flushQueue(jobName: string): void;
     }
 
-    function queueFactory(config: QueueFactoryConfig): Promise<Queue>;
+    function queueFactory(config: QueueFactoryConfig): Promise<RNQueue>;
 
     export default queueFactory;
 }
