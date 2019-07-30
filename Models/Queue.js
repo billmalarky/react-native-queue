@@ -32,6 +32,10 @@ export class Queue {
     this.status = 'inactive';
   }
 
+  getStatus() {
+    return this.status;
+  }
+
   /**
    *
    * Initializes the queue by connecting to Realm database.
