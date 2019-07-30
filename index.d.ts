@@ -15,6 +15,7 @@ declare module "react-native-queue" {
     }
 
     interface JobOptions {
+        jobId?: string;
         priority?: number;
         timeout?: number;
         attempts?: number;
@@ -40,6 +41,7 @@ declare module "react-native-queue" {
         start(lifespan?: number): Promise<boolean | undefined>;
         stop(): void;
         getJobs(sync?: boolean): Promise<Job[]>;
+        getJob(jobId: string, sync?: boolean): Promise<Job>;
         getConcurrentJobs(queueLifespanRemaining?: number): Promise<Job[]>;
         processJob(job: Job): void;
         flushQueue(jobName: string): void;
