@@ -101,11 +101,13 @@ export class Queue {
     if (options.timeout < 0 || options.attempts < 0) {
       throw new Error('Invalid job option.');
     }
+    
+    const jobId = uuid.v4();
 
     this.realm.write(() => {
 
       this.realm.create('Job', {
-        id: uuid.v4(),
+        id: jobId,
         name,
         payload: JSON.stringify(payload),
         data: JSON.stringify({
@@ -124,6 +126,8 @@ export class Queue {
     if (startQueue && this.status == 'inactive') {
       this.start();
     }
+    
+    return jobId;
 
   }
 
