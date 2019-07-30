@@ -250,12 +250,12 @@ export class Queue {
     let job = null;
     if (sync) {
       this.realm.write(() => {
-        job = this.realm.objects('Job').filtered(`id="${jobId}"`);
+        job = this.realm.objectForPrimaryKey('Job', `${jobId}`);
       });
     } else {
-      job = await this.realm.objects('Job').filtered(`id="${jobId}"`);
+      job = await this.realm.objectForPrimaryKey('Job', `${jobId}`);
     }
-    return job !== null && job.length > 0 ? job[0] : job;
+    return job || null;
   }
 
   /**
