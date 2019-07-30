@@ -240,6 +240,26 @@ export class Queue {
 
   }
 
+/**
+   *
+   * Get a job in the queue.
+   *
+   * @param jobId {string} - The job id returned by create job call
+   * @param sync {boolean} - This should be true if you want to guarantee job data is fresh. Otherwise you could receive job data that is not up to date if a write transaction is occuring concurrently.
+   * @return {promise} - Promise that resolves to a collection of all the jobs in the queue.
+   */
+  async getJob(jobId, sync = false) {
+    let job = null;
+    if (sync) {
+      this.realm.write(() => {
+        job = this.realm.objects('Job').filtered(`id="${jobId}"`);
+      });
+    } else {
+      job = await this.realm.objects('Job').filtered(`id="${jobId}"`);
+    }
+    return job !== null && job.length > 0 ? job[0] : job;
+  }
+
   /**
    *
    * Get the next job(s) that should be processed by the queue.
