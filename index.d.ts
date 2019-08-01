@@ -44,6 +44,7 @@ declare module "react-native-queue" {
         getJob(jobId: string, sync?: boolean): Promise<Job>;
         getConcurrentJobs(queueLifespanRemaining?: number): Promise<Job[]>;
         processJob(job: Job): void;
+        deleteJob(jobId: string): void;
         flushQueue(jobName: string): void;
         getStatus(): 'active' | 'inactive';
     }
