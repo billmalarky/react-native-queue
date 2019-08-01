@@ -317,11 +317,6 @@ export class Queue {
         // See: https://stackoverflow.com/questions/47359368/does-realm-support-select-for-update-style-read-locking/47363356#comment81772710_47363356
         const concurrentJobIds = jobsToMarkActive.map(job => job.id);
 
-        // Mark concurrent jobs as active
-        jobsToMarkActive = jobsToMarkActive.map(job => {
-          job.active = true;
-        });
-
         // Reselect now-active concurrent jobs by id.
         const reselectQuery = concurrentJobIds.map(jobId => 'id == "' + jobId + '"').join(' OR ');
         const reselectedJobs = this.realm.objects('Job')
@@ -402,9 +397,6 @@ export class Queue {
         }
 
         job.data = JSON.stringify(jobData);
-
-        // Reset active status
-        job.active = false;
 
         // Mark job as failed if too many attempts
         if (jobData.failedAttempts >= jobData.attempts) {
