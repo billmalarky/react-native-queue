@@ -420,6 +420,19 @@ export class Queue {
 
   /**
    *
+   * Delete a job in the queue.
+   *
+   * @param jobId {string}
+   */
+  deleteJob(jobId) {
+  	let job = this.realm.objectForPrimaryKey('Job', jobId);
+    if (job) {
+      this.realm.delete(job);
+    }
+  }
+
+  /**
+   *
    * Delete jobs in the queue.
    *
    * If jobName is supplied, only jobs associated with that name
