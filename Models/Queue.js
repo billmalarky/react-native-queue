@@ -427,7 +427,9 @@ export class Queue {
   deleteJob(jobId) {
   	let job = this.realm.objectForPrimaryKey('Job', jobId);
     if (job) {
-      this.realm.delete(job);
+      this.realm.write(() => {
+      	this.realm.delete(job);
+      });
     }
   }
 
