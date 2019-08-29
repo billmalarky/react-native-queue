@@ -178,7 +178,7 @@ export class Queue {
     while (this.status === 'active' && concurrentJobs.length) {
 
       // Loop over jobs and process them concurrently.
-      const processingJobs = concurrentJobs.map( job => {
+      const processingJobs = concurrentJobs.map(job => {
         return this.processJob(job);
       });
 
@@ -276,10 +276,10 @@ export class Queue {
       // Grab concurrent job ids to reselect jobs as marking these jobs as active will remove
       // them from initial selection when write transaction exits.
       // See: https://stackoverflow.com/questions/47359368/does-realm-support-select-for-update-style-read-locking/47363356#comment81772710_47363356
-      const concurrentJobIds = jobsToMarkActive.map( job => job.id);
+      const concurrentJobIds = jobsToMarkActive.map(job => job.id);
 
       // Mark concurrent jobs as active
-      jobsToMarkActive = jobsToMarkActive.map( job => {
+      jobsToMarkActive = jobsToMarkActive.map(job => {
         job.active = true;
       });
 
@@ -324,8 +324,9 @@ export class Queue {
     this.worker.executeJobLifecycleCallback('onStart', jobName, jobId, jobPayload);
 
     try {
-
-      await this.worker.executeJob(job);
+      const executionResult = await this.worker.executeJob(job); // here we catch js/network errors
+      
+      if (!executionResult.ok) throw new Error('Execution failure'); // here we catch http errors
 
       // On successful job completion, remove job
       this.jobDB.delete(job);
@@ -335,7 +336,6 @@ export class Queue {
       this.worker.executeJobLifecycleCallback('onComplete', jobName, jobId, jobPayload);
 
     } catch (error) {
-
       // Handle job failure logic, including retries.
       let jobData = JSON.parse(job.data);
 
@@ -348,7 +348,7 @@ export class Queue {
 
       // Log error
       if (!jobData.errors) {
-        jobData.errors = [ error.message ];
+        jobData.errors = [error.message];
       } else {
         jobData.errors.push(error.message);
       }
@@ -366,11 +366,19 @@ export class Queue {
       this.jobDB.save(job);
 
       // Execute job onFailure lifecycle callback.
-      this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, jobPayload);
+
+      if ( // filter network errors
+        error.message.indexOf('TIMEOUT') !== -1 ||
+        error.message.indexOf('Network request failed') !== -1
+      ) return false;
+
+      if (jobData.failedAttempts === 1 || jobData.failedAttempts === jobData.attempts) { // report only first and last error
+        this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, jobPayload, error);
+      }
 
       // If job has failed all attempts execute job onFailed and onComplete lifecycle callbacks.
       if (jobData.failedAttempts >= jobData.attempts) {
-        this.worker.executeJobLifecycleCallback('onFailed', jobName, jobId, jobPayload);
+        this.worker.executeJobLifecycleCallback('onFailed', jobName, jobId, jobPayload, error);
         this.worker.executeJobLifecycleCallback('onComplete', jobName, jobId, jobPayload);
       }
 
