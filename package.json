@@ -25,6 +25,7 @@
   },
   "homepage": "https://github.com/billmalarky/react-native-queue#readme",
   "dependencies": {
+    "moment": "^2.24.0",
     "promise-reflect": "^1.1.0",
     "react-native-uuid": "^1.4.9",
     "realm": "^2.0.12"

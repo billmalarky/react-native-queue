@@ -101,11 +101,13 @@ export class Queue {
         data: JSON.stringify({
           attempts: options.attempts || 1
         }),
-        priority: options.priority || 0,
+        priority: Number.isInteger(options.priority) ? options.priority : 0,
         active: false,
         timeout: (options.timeout >= 0) ? options.timeout : 25000,
         created: new Date(),
-        failed: null
+        failed: null,
+        nextValidTime: new Date(),
+        retryDelay: Number.isInteger(options.retryDelay) ? options.retryDelay : 0,
       });
 
     });
@@ -113,6 +115,20 @@ export class Queue {
     // Start queue on job creation if it isn't running by default.
     if (startQueue && this.status == 'inactive') {
       this.start();
+    }
+
+  }
+
+  calculateRemainingLifespan () {
+    const lifespanRemaining = this.lifespan - (Date.now() - this.startTime);
+    return (lifespanRemaining === 0) ? -1 : lifespanRemaining; // Handle exactly zero lifespan remaining edge case.
+  }
+
+  async calculateJobs () {
+    if (this.lifespan !== 0) {
+      return this.getConcurrentJobs(this.calculateRemainingLifespan());
+    } else {
+      return this.getConcurrentJobs();
     }
 
   }
@@ -141,6 +157,7 @@ export class Queue {
    * @return {boolean|undefined} - False if queue is already started. Otherwise nothing is returned when queue finishes processing.
    */
   async start(lifespan = 0) {
+    this.lifespan = lifespan;
 
     // If queue is already running, don't fire up concurrent loop.
     if (this.status == 'active') {
@@ -150,17 +167,12 @@ export class Queue {
     this.status = 'active';
 
     // Get jobs to process
-    const startTime = Date.now();
-    let lifespanRemaining = null;
-    let concurrentJobs = [];
+    if(!this.startTime)
+      this.startTime = Date.now();
 
-    if (lifespan !== 0) {
-      lifespanRemaining = lifespan - (Date.now() - startTime);
-      lifespanRemaining = (lifespanRemaining === 0) ? -1 : lifespanRemaining; // Handle exactly zero lifespan remaining edge case.
-      concurrentJobs = await this.getConcurrentJobs(lifespanRemaining);
-    } else {
-      concurrentJobs = await this.getConcurrentJobs();
-    }
+    let concurrentJobs;
+
+    concurrentJobs = await this.calculateJobs();
 
     while (this.status == 'active' && concurrentJobs.length) {
 
@@ -174,18 +186,14 @@ export class Queue {
       await Promise.all(processingJobs.map(promiseReflect));
 
       // Get next batch of jobs.
-      if (lifespan !== 0) {
-        lifespanRemaining = lifespan - (Date.now() - startTime);
-        lifespanRemaining = (lifespanRemaining === 0) ? -1 : lifespanRemaining; // Handle exactly zero lifespan remaining edge case.
-        concurrentJobs = await this.getConcurrentJobs(lifespanRemaining);
-      } else {
-        concurrentJobs = await this.getConcurrentJobs();
-      }
-
+      concurrentJobs = await this.calculateJobs();
     }
 
     this.status = 'inactive';
-
+    if(this.calculateRemainingLifespan() < 500){
+      delete this.startTime;
+      delete this.lifespan;
+    }
   }
 
   /**
@@ -198,6 +206,8 @@ export class Queue {
    */
   stop() {
     this.status = 'inactive';
+    delete this.startTime;
+    delete this.lifespan;
   }
 
   /**
@@ -248,17 +258,18 @@ export class Queue {
 
       // Get next job from queue.
       let nextJob = null;
+      const now = new Date();
 
       // Build query string
       // If queueLife
       const timeoutUpperBound = (queueLifespanRemaining - 500 > 0) ? queueLifespanRemaining - 499 : 0; // Only get jobs with timeout at least 500ms < queueLifespanRemaining.
 
       const initialQuery = (queueLifespanRemaining)
-        ? 'active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
-        : 'active == FALSE AND failed == null';
+        ? 'active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound + ' AND nextValidTime <= $0'
+        : 'active == FALSE AND failed == null AND nextValidTime <= $0';
 
       let jobs = this.realm.objects('Job')
-        .filtered(initialQuery)
+        .filtered(initialQuery, now)
         .sorted([['priority', true], ['created', false]]);
 
       if (jobs.length) {
@@ -271,11 +282,11 @@ export class Queue {
         const concurrency = this.worker.getConcurrency(nextJob.name);
 
         const allRelatedJobsQuery = (queueLifespanRemaining)
-          ? 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound
-          : 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null';
+          ? 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound + ' AND nextValidTime <= $0'
+          : 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null AND nextValidTime <= $0';
 
         const allRelatedJobs = this.realm.objects('Job')
-          .filtered(allRelatedJobsQuery)
+          .filtered(allRelatedJobsQuery, now)
           .sorted([['priority', true], ['created', false]]);
 
         let jobsToMarkActive = allRelatedJobs.slice(0, concurrency);
@@ -379,6 +390,10 @@ export class Queue {
           job.failed = new Date();
         }
 
+        if(job.retryDelay && job.retryDelay > 0) setTimeout(() => {
+          this.start(this.lifespan ? this.lifespan : 0);
+        },job.retryDelay);
+        job.nextValidTime = new Date(new Date().getTime() + job.retryDelay);
       });
 
       // Execute job onFailure lifecycle callback.

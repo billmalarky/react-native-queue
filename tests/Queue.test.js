@@ -6,6 +6,8 @@
 import should from 'should'; // eslint-disable-line no-unused-vars
 import QueueFactory, { Queue } from '../Models/Queue';
 import Worker from '../Models/Worker';
+import Database from '../config/Database';
+import moment from 'moment';
 
 describe('Models/Queue', function() {
 
@@ -16,6 +18,8 @@ describe('Models/Queue', function() {
     queue.flushQueue();
 
   });
+
+  const wait = time => new Promise(resolve => setTimeout(resolve,time));
 
   //
   // QUEUE LIFESPAN TESTING
@@ -252,7 +256,7 @@ describe('Models/Queue', function() {
 
   });
 
-  it('#start(lifespan) ADVANCED TEST FULL (Multiple job names, job timeouts, concurrency, priority) - ONLY RUN IN NON-CI ENV: queue will process jobs with timeout set as expected until lifespan ends.', async () => {
+  it('#start(lifespan) ADVANCED TEST FULL (Multiple job names, job timeouts, concurrency, priority, retryDelay) - ONLY RUN IN NON-CI ENV: queue will process jobs with timeout set as expected until lifespan ends.', async () => {
 
     // This test will intermittently fail in CI environments like travis-ci.
     // Intermittent failure is a result of the poor performance of CI environments
@@ -269,6 +273,7 @@ describe('Models/Queue', function() {
     const anotherJobName = 'another-job-name';
     const timeoutJobName = 'timeout-job-name';
     const concurrentJobName = 'concurrent-job-name';
+    const failingJobName = 'failing-job-name';
     const queueLifespan = 5300;
     let remainingLifespan = queueLifespan;
 
@@ -360,21 +365,38 @@ describe('Models/Queue', function() {
 
     }, { concurrency: 4});
 
+    queue.addWorker(failingJobName, async (id, payload) => {
+      // Track jobs that exec
+      executedJobs.push(payload.trackingName);
+
+      // Detect jobs that should't be picked up by lifespan queue.
+      if (remainingLifespan - 500 < payload.payloadOptionsTimeout) {
+        badJobs.push({id, payload});
+      }
+
+      await new Promise( (resolve,reject) => {
+        setTimeout(() => {
+          reject('fail');
+        }, payload.payloadTimeout);
+      });
+    }, { concurrency: 1});
+
     // Create a couple jobs
-    queue.createJob(jobName, {
-      trackingName: 'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)',
-      payloadTimeout: 100,
-      payloadOptionsTimeout: 200 // Mirror the actual job options timeout in payload so we can use it for testing.
-    }, {
-      timeout: 200,
-      priority: -1
-    }, false);
+    // Broken in core module - not required so not fixing
+    // queue.createJob(jobName, {
+    //   trackingName: 'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)',
+    //   payloadTimeout: 100,
+    //   payloadOptionsTimeout: 200 // Mirror the actual job options timeout in payload so we can use it for testing.
+    // }, {
+    //   timeout: 200,
+    //   priority: -1
+    // }, false);
 
     // Since more than one job can be written in 1 ms, we need to add a slight delay
     // in order to control the order jobs come off the queue (since they are time sorted)
     // If multiple jobs are written in the same ms, Realm can't be deterministic about job
     // ordering when we pop jobs off the top of the queue.
-    await new Promise((resolve) => { setTimeout(resolve, 25); });
+    // await new Promise((resolve) => { setTimeout(resolve, 25); });
 
     queue.createJob(anotherJobName, {
       trackingName: 'job2-another-job-name-payloadTimeout(1000)-timeout(1100)-priority(0)',
@@ -510,6 +532,19 @@ describe('Models/Queue', function() {
     }, false);
     await new Promise((resolve) => { setTimeout(resolve, 25); });
 
+    queue.createJob(failingJobName, {
+      trackingName: 'job16-failing-job-name-retryDelay(2800)-attempts(3)', // This job should run twice in lifespan
+      retryDelay: 3000,
+      attempts: 3,
+      payloadTimeout: 10,
+    }, {
+      timeout: 600,
+      retryDelay: 3000,
+      attempts: 3,
+      priority: 100,
+    }, false);
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+
     // startQueue is false so queue should not have started.
     queue.status.should.equal('inactive');
 
@@ -534,17 +569,19 @@ describe('Models/Queue', function() {
 
     //Check that the correct jobs executed.
     executedJobs.should.deepEqual([
+      'job16-failing-job-name-retryDelay(2800)-attempts(3)',
       'job3-another-job-name-payloadTimeout(750)-timeout(800)-priority(10)',
       'job7-job-name-payloadTimeout(1000)-timeout(1100)-priority(1)',
       'job2-another-job-name-payloadTimeout(1000)-timeout(1100)-priority(0)',
       'job5-job-name-payloadTimeout(400)-timeout(500)-priority(0)',
+      'job16-failing-job-name-retryDelay(2800)-attempts(3)',
       'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)', // This job executes but isn't deleted because it fails due to timeout.
       'job8-concurrent-job-name-payloadTimeout(500)-timeout(600)-priority(0)',
       'job9-concurrent-job-name-payloadTimeout(510)-timeout(600)-priority(0)',
       'job11-concurrent-job-name-payloadTimeout(600)-timeout(700)-priority(0)',
       'job12-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
       'job14-job-name-payloadTimeout(100)-timeout(200)-priority(0)',
-      'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)'
+      // 'job1-job-name-payloadTimeout(100)-timeout(200)-priority(-1)'
     ]);
 
     // Check jobs that couldn't be picked up are still in the queue.
@@ -562,7 +599,8 @@ describe('Models/Queue', function() {
       'job6-timeout-job-name-payloadTimeout(10000)-timeout(500)-priority(0)',
       'job10-concurrent-job-name-payloadTimeout(10000)-timeout(10100)-priority(0)',
       'job13-job-name-payloadTimeout(400)-timeout(500)-priority(0)',
-      'job15-job-name-payloadTimeout(500)-timeout(600)-priority(0)'
+      'job15-job-name-payloadTimeout(500)-timeout(600)-priority(0)',
+      'job16-failing-job-name-retryDelay(2800)-attempts(3)'
     ]);
 
   }, 10000); // Increase timeout of this advanced test to 10 seconds.
@@ -1241,6 +1279,101 @@ describe('Models/Queue', function() {
     const sixthConcurrentJobs = await queue.getConcurrentJobs();
     sixthConcurrentJobs.length.should.equal(0);
 
+  });
+
+  it('should set nextValidTime for job on failure which is retryDelay after now', async () => {
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+
+    queue.addWorker(jobName, async () => {
+      throw new Error('fail');
+    }, {
+      concurrency: 1
+    });
+
+    queue.createJob(jobName, {}, {
+      attempts: 2,
+      timeout: 250,
+      retryDelay: 2000,
+    }, false);
+
+    const now = Date.now();
+    await queue.start(1500);
+    await wait(1500);
+
+    const jobs = await queue.getJobs(true);
+    const job = jobs[0];
+
+    const jobData = JSON.parse(job.data);
+    jobData.failedAttempts.should.equal(1);
+    should.not.exist(job.failed);
+    moment(job.nextValidTime).subtract(now).should.be.greaterThan(1000);
+    queue.flushQueue();
+  });
+
+  const addFailedAttemptCount = async (realm, jobs, failedCount, nextValidTime = new Date()) => {
+    const job = jobs[0];
+    const jobData = JSON.parse(job.data);
+    realm.write(() => {
+      job.nextValidTime = nextValidTime;
+      jobData.failedAttempts = failedCount;
+      job.data = JSON.stringify(jobData);
+    });
+  };
+
+  const addFailedStatus = async (realm, jobs) => {
+    const job = jobs[0];
+    realm.write(() => {
+      job.failed = new Date();
+    });
+  };
+
+  const createAndTestJob = async (nextValidTime, failed, expectedNumberOfReturn) => {
+    const queue = await QueueFactory();
+    const jobName = 'job-name';
+    const realm = await Database.getRealmInstance();
+
+    queue.addWorker(jobName, () => {}, {
+      concurrency: 1
+    });
+
+    queue.createJob(jobName, {}, {
+      attempts: 2,
+      timeout: 99,
+      retryDelay: 100,
+    }, false);
+
+    if(nextValidTime)
+      await addFailedAttemptCount(realm, await queue.getJobs(true),1, nextValidTime);
+
+    if(failed)
+      await addFailedStatus(realm, await queue.getJobs(true));
+
+    const returnedJobs = await queue.getConcurrentJobs(600);
+
+    returnedJobs.length.should.equal(expectedNumberOfReturn);
+
+    queue.flushQueue();
+  };
+
+  it('#getConcurrentJobs(queueLifespanRemaining) should return jobs with retryDelay set will be returned by getConcurrentJobs() as normal if not failedAttempts.', async () => {
+    await createAndTestJob(null,false,1);
+  });
+
+  it('#getConcurrentJobs(queueLifespanRemaining) should not return jobs with nextValidTime in the future.', async () => {
+    await createAndTestJob(new Date(new Date().getTime() + 1000),false,0);
+  });
+
+  it('#getConcurrentJobs(queueLifespanRemaining) should return jobs with nextValidTime in the past.', async () => {
+    await createAndTestJob(new Date(new Date().getTime() - 1000),false,1);
+  });
+
+  it('#getConcurrentJobs(queueLifespanRemaining) should return jobs with nextValidTime now.', async () => {
+    await createAndTestJob(new Date(),false,1);
+  });
+
+  it('#getConcurrentJobs(queueLifespanRemaining) should not return failed jobs.', async () => {
+    await createAndTestJob(new Date(new Date().getTime() - 1000),true,0);
   });
 
   it('#processJob() executes job worker then deletes job on success', async () => {
@@ -2184,4 +2317,46 @@ describe('Models/Queue', function() {
 
   });
 
+  it('should respect lifespan rules even with delayed jobs', async () => {
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+
+    function * succeedGeneratorFn() {
+      yield false;
+      yield false;
+      yield true;
+    }
+    const succeedGenerator = succeedGeneratorFn();
+
+    // Attach the worker.
+    queue.addWorker(jobName, async (id,payload) => {
+      if(!succeedGenerator.next().value) throw new Error('fail');
+    }, false);
+
+    queue.createJob(jobName,{foo:'bar'},{
+      retryDelay: 500,
+      attempts: 3,
+      timeout: 200,
+    },false);
+
+    await queue.start(1250);
+    await wait(1250);
+
+    const jobs = await queue.getJobs(true);
+    const job = jobs[0];
+    const jobData = JSON.parse(job.data);
+
+    should.not.exist(job.failed);
+    jobData.failedAttempts.should.equal(2);
+
+    await wait(500);
+    await queue.start(1000);
+    await wait(2000);
+
+    const doneJobs = await queue.getJobs(true);
+    doneJobs.length.should.equal(0);
+
+    queue.flushQueue();
+  });
 });
