@@ -171,7 +171,6 @@ export class Queue {
       this.startTime = Date.now();
 
     let concurrentJobs;
-
     concurrentJobs = await this.calculateJobs();
 
     while (this.status == 'active' && concurrentJobs.length) {
@@ -390,11 +389,12 @@ export class Queue {
           job.failed = new Date();
         }
 
-        if(job.retryDelay && job.retryDelay > 0) setTimeout(() => {
-          this.start(this.lifespan ? this.lifespan : 0);
-        },job.retryDelay);
         job.nextValidTime = new Date(new Date().getTime() + job.retryDelay);
       });
+
+      if(job.retryDelay && job.retryDelay > 0) setTimeout(() => {
+        this.start(this.lifespan ? this.lifespan : 0);
+      },job.retryDelay);
 
       // Execute job onFailure lifecycle callback.
       this.worker.executeJobLifecycleCallback('onFailure', jobName, jobId, jobPayload);
@@ -443,6 +443,10 @@ export class Queue {
 
   }
 
+  async close() {
+    await this.stop();
+    await this.realm.close();
+  }
 
 }
 
