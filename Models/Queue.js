@@ -124,11 +124,11 @@ export class Queue {
     return (lifespanRemaining === 0) ? -1 : lifespanRemaining; // Handle exactly zero lifespan remaining edge case.
   }
 
-  async calculateJobs () {
+  async calculateJobs (jobsLimit) {
     if (this.lifespan !== 0) {
-      return this.getConcurrentJobs(this.calculateRemainingLifespan());
+      return this.getConcurrentJobs(jobsLimit,this.calculateRemainingLifespan());
     } else {
-      return this.getConcurrentJobs();
+      return this.getConcurrentJobs(jobsLimit);
     }
 
   }
@@ -156,8 +156,9 @@ export class Queue {
    * @param lifespan {number} - If lifespan is passed, the queue will start up and run for lifespan ms, then queue will be stopped.
    * @return {boolean|undefined} - False if queue is already started. Otherwise nothing is returned when queue finishes processing.
    */
-  async start(lifespan = 0) {
+  async start(lifespan = 0, numberOfJobsToProcess) {
     this.lifespan = lifespan;
+    let jobsProcessed = 0;
 
     // If queue is already running, don't fire up concurrent loop.
     if (this.status == 'active') {
@@ -167,11 +168,11 @@ export class Queue {
     this.status = 'active';
 
     // Get jobs to process
-    if(!this.startTime)
+    if(!this.startTime || this.calculateRemainingLifespan() < 0)
       this.startTime = Date.now();
 
     let concurrentJobs;
-    concurrentJobs = await this.calculateJobs();
+    concurrentJobs = await this.calculateJobs(numberOfJobsToProcess-jobsProcessed);
 
     while (this.status == 'active' && concurrentJobs.length) {
 
@@ -179,13 +180,14 @@ export class Queue {
       const processingJobs = concurrentJobs.map( job => {
         return this.processJob(job);
       });
+      jobsProcessed += concurrentJobs.length;
 
       // Promise Reflect ensures all processingJobs resolve so
       // we don't break await early if one of the jobs fails.
       await Promise.all(processingJobs.map(promiseReflect));
 
       // Get next batch of jobs.
-      concurrentJobs = await this.calculateJobs();
+      concurrentJobs = await this.calculateJobs(numberOfJobsToProcess - jobsProcessed);
     }
 
     this.status = 'inactive';
@@ -249,7 +251,7 @@ export class Queue {
    * @param queueLifespanRemaining {number} - The remaining lifespan of the current queue process (defaults to indefinite).
    * @return {promise} - Promise resolves to an array of job(s) to be processed next by the queue.
    */
-  async getConcurrentJobs(queueLifespanRemaining = 0) {
+  async getConcurrentJobs(jobsLimit = -1, queueLifespanRemaining = 0) {
 
     let concurrentJobs = [];
 
@@ -267,8 +269,10 @@ export class Queue {
         ? 'active == FALSE AND failed == null AND timeout > 0 AND timeout < ' + timeoutUpperBound + ' AND nextValidTime <= $0'
         : 'active == FALSE AND failed == null AND nextValidTime <= $0';
 
+      const limitQuery = jobsLimit > -1 ? ` LIMIT(${jobsLimit})` : '';
+
       let jobs = this.realm.objects('Job')
-        .filtered(initialQuery, now)
+        .filtered(initialQuery + limitQuery, now)
         .sorted([['priority', true], ['created', false]]);
 
       if (jobs.length) {
@@ -285,7 +289,7 @@ export class Queue {
           : 'name == "'+ nextJob.name +'" AND active == FALSE AND failed == null AND nextValidTime <= $0';
 
         const allRelatedJobs = this.realm.objects('Job')
-          .filtered(allRelatedJobsQuery, now)
+          .filtered(allRelatedJobsQuery + limitQuery, now)
           .sorted([['priority', true], ['created', false]]);
 
         let jobsToMarkActive = allRelatedJobs.slice(0, concurrency);
@@ -303,7 +307,7 @@ export class Queue {
         // Reselect now-active concurrent jobs by id.
         const reselectQuery = concurrentJobIds.map( jobId => 'id == "' + jobId + '"').join(' OR ');
         const reselectedJobs = this.realm.objects('Job')
-          .filtered(reselectQuery)
+          .filtered(reselectQuery + limitQuery)
           .sorted([['priority', true], ['created', false]]);
 
         concurrentJobs = reselectedJobs.slice(0, concurrency);

@@ -997,7 +997,7 @@ describe('Models/Queue', function() {
         timeout: 0
       }, false);
 
-      const jobs = await queue.getConcurrentJobs(2000);
+      const jobs = await queue.getConcurrentJobs(-1, 2000);
 
       // No jobs should be grabbed
       jobs.length.should.equal(0);
@@ -1016,7 +1016,7 @@ describe('Models/Queue', function() {
         timeout: 500
       }, false);
 
-      const notEnoughBufferJobs = await queue.getConcurrentJobs(600);
+      const notEnoughBufferJobs = await queue.getConcurrentJobs(-1,600);
 
       // No jobs should be grabbed
       notEnoughBufferJobs.length.should.equal(0);
@@ -1038,7 +1038,7 @@ describe('Models/Queue', function() {
       // startQueue is false so queue should not have started.
       queue.status.should.equal('inactive');
 
-      const lowerBoundEdgeCaseJobs = await queue.getConcurrentJobs(501);
+      const lowerBoundEdgeCaseJobs = await queue.getConcurrentJobs(-1,501);
 
       // Only the jobs with the timeouts set should be grabbed.
       lowerBoundEdgeCaseJobs.length.should.equal(2);
@@ -1063,7 +1063,7 @@ describe('Models/Queue', function() {
       // startQueue is false so queue should not have started.
       queue.status.should.equal('inactive');
 
-      const lifespanConcurrencyJobs = await queue.getConcurrentJobs(2000);
+      const lifespanConcurrencyJobs = await queue.getConcurrentJobs(-1,2000);
 
       // Only 3 jobs should be grabbed in this test even though all jobs
       // have valid timeouts because worker concurrency is set to 3
@@ -2417,6 +2417,65 @@ describe('Models/Queue', function() {
     });
     await wait(500);
     expect(callCount).toBe(2);
+
+    queue.flushQueue();
+  });
+
+  it('should be able to define the number of jobs triggered per queue start with lifespan > 0', async () => {
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+    let callCount = 0;
+    // Attach the worker.
+    queue.addWorker(jobName, async (id,payload) => {
+      callCount = callCount + 1;
+    }, false);
+
+    queue.createJob(jobName,{foo:'bar'},{
+      retryDelay: 500,
+      attempts: 3,
+      timeout: 200,
+    },false);
+
+    queue.createJob(jobName,{foo:'goo'},{
+      retryDelay: 500,
+      attempts: 3,
+      timeout: 200,
+    }, false);
+
+    queue.createJob(jobName,{foo:'bar'},{
+      retryDelay: 500,
+      attempts: 3,
+      timeout: 200,
+    },false);
+
+    queue.createJob(jobName,{foo:'goo'},{
+      retryDelay: 500,
+      attempts: 3,
+      timeout: 200,
+    }, false);
+
+    await queue.start(1000,1);
+    await wait(600);
+    expect(callCount).toBe(1);
+    await wait(600);
+    expect(callCount).toBe(1);
+
+    await queue.start(1000,1);
+    await wait(600);
+    expect(callCount).toBe(2);
+    await wait(600);
+    expect(callCount).toBe(2);
+
+    await queue.start(1000,2);
+    await wait(600);
+    expect(callCount).toBe(4);
+    await wait(600);
+    expect(callCount).toBe(4);
+
+    await queue.start(1000,0);
+    await wait(1100);
+    expect(callCount).toBe(4);
 
     queue.flushQueue();
   });
