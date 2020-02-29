@@ -28,7 +28,7 @@
     "moment": "^2.24.0",
     "promise-reflect": "^1.1.0",
     "react-native-uuid": "^1.4.9",
-    "realm": "^3.6.4"
+    "realm": "^2.0.13"
   },
   "devDependencies": {
     "babel-eslint": "^8.0.3",
