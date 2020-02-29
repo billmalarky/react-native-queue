@@ -447,6 +447,28 @@ export class Queue {
 
   }
 
+  /**
+   * Delete a job in the queue with jobId
+   * @param jobId {string} - id associated with job
+   */
+  flushJob(jobId) {
+    try {
+      if(jobId) {
+        this.realm.write(() => {
+          let jobs = this.realm
+            .objects('Job')
+            .filtered(`id == "${jobId}"`);
+          if(jobs.length) {
+            this.realm.delete(jobs);
+            return;
+          }
+        });
+      }
+    } catch (e) {
+      console.log('flushJob failed', jobId);
+    }
+  }
+
   async close() {
     await this.stop();
     await this.realm.close();

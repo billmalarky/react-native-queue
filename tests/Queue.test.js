@@ -2479,4 +2479,30 @@ describe('Models/Queue', function() {
 
     queue.flushQueue();
   });
+
+  it('should be able to remove a job by id', async () => {
+    const queue = await QueueFactory();
+    queue.flushQueue();
+    const jobName = 'job-name';
+
+    // Attach the worker.
+    queue.addWorker(jobName, async (id,payload) => {
+    }, false);
+
+    queue.createJob(jobName,{foo:'bar'},{
+      retryDelay: 500,
+      attempts: 3,
+      timeout: 200,
+    },false);
+
+    const jobs = await queue.getJobs(true);
+    expect(Object.keys(jobs).length).toBe(1);
+
+    queue.flushJob(jobs[0].id);
+
+    const newJobs = await queue.getJobs(true);
+    expect(Object.keys(newJobs).length).toBe(0);
+
+    queue.flushQueue();
+  });
 });
