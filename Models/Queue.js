@@ -428,6 +428,9 @@ export class Queue {
 
   }
 
+  getRealm() {
+    return this.realm;
+  }
 
 }
 
