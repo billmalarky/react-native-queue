@@ -34,6 +34,15 @@ export class Queue {
   async init() {
     if (this.realm === null) {
       this.realm = await Database.getRealmInstance();
+          // if jobs are set to active in the realm database, then set them to inactive since we are getting ready to start up here.
+      this.realm.write(() => {
+        let jobs = this.realm.objects('Job')
+        .filtered('active == true');
+        jobsToMarkInactive = jobs.map( job => {
+          job.active = false;
+        });
+    });
+
     }
   }
 
@@ -148,17 +157,6 @@ export class Queue {
     }
 
     this.status = 'active';
-
-    // if jobs are set to active in the realm database, then set them to inactive since we are getting ready to start up here.
-    this.realm.write(() => {
-
-      let jobs = this.realm.objects('Job')
-        .filtered('active == true');
-        jobsToMarkInactive = jobs.map( job => {
-          job.active = false;
-        });
-
-    });
 
     // Get jobs to process
     const startTime = Date.now();
