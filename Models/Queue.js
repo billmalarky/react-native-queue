@@ -156,6 +156,14 @@ export class Queue {
 
     this.status = 'active';
 
+    //clear out things marked active so that we can resume them.
+    await this.realm.write(() => {
+      let jobs = this.realm.objects('Job');
+      jobs.forEach( job => {
+        job.active = false;
+        });
+      });
+
     // Get jobs to process
     const startTime = Date.now();
     let lifespanRemaining = null;
