@@ -211,14 +211,8 @@ export class Queue {
    * queue is restarted by either queue.createJob() or queue.start().
    *
    */
-  async stop() {
+  stop() {
     this.status = 'inactive';
-    await this.realm.write(() => {
-      let jobs = this.realm.objects('Job');
-      jobs.forEach( job => {
-        job.active = false;
-        });
-      });
   }
 
   /**
@@ -451,6 +445,13 @@ export class Queue {
 
   getRealm() {
     return this.realm;
+  }
+
+  isActive() {
+    if (this.status == 'active') {
+      return true;
+    }
+    return false;
   }
 
 }
