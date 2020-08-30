@@ -192,8 +192,10 @@ export class Queue {
       if (lifespan !== 0) {
         lifespanRemaining = lifespan - (Date.now() - startTime);
         lifespanRemaining = (lifespanRemaining === 0) ? -1 : lifespanRemaining; // Handle exactly zero lifespan remaining edge case.
+        if (this.status == 'inactive') { break; }
         concurrentJobs = await this.getConcurrentJobs(lifespanRemaining);
       } else {
+        if (this.status == 'inactive') { break; }
         concurrentJobs = await this.getConcurrentJobs();
       }
 
