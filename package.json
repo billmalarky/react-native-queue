@@ -27,7 +27,7 @@
   "dependencies": {
     "promise-reflect": "^1.1.0",
     "react-native-uuid": "^1.4.9",
-    "realm": "^3.4.0"
+    "realm": "^5.0.5"
   },
   "devDependencies": {
     "babel-eslint": "^8.0.3",
